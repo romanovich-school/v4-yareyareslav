@@ -3,6 +3,7 @@ module marketplace
 go 1.26.1
 
 require (
+	github.com/go-chi/chi v1.5.5
 	google.golang.org/grpc v1.83.2
 	google.golang.org/protobuf v1.36.12
 )
