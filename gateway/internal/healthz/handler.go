@@ -11,7 +11,6 @@ type HealthzHandler struct {
 
 func NewHealthzHandler(r chi.Router) *HealthzHandler {
 	h := &HealthzHandler{}
-
 	r.Get("/healthz", h.CheckHealthz)
 
 	return h
