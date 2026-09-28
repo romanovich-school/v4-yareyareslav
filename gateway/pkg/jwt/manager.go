@@ -22,13 +22,13 @@ func NewManager(secret string, accessTTL time.Duration, refreshTTL time.Duration
 }
 
 type Claims struct {
-	Role Role `json:"user_role"`
+	Role string `json:"user_role"`
 	TokenType string `json:"token_type"`
 
 	jwt.RegisteredClaims
 }
 
-func (m *Manager) generateToken(userID string, role Role, tokenType string, ttl time.Duration) (string, error) {
+func (m *Manager) generateToken(userID string, role string, tokenType string, ttl time.Duration) (string, error) {
 	now := time.Now()
 
 	claims := Claims{
@@ -46,11 +46,11 @@ func (m *Manager) generateToken(userID string, role Role, tokenType string, ttl 
 	return token.SignedString(m.secret)
 }
 
-func (m *Manager) GenerateAccessToken(userID string, role Role) (string, error) {
+func (m *Manager) GenerateAccessToken(userID string, role string) (string, error) {
 	return m.generateToken(userID, role, "access", m.accessTTL)
 }
 
-func (m *Manager) GenerateRefreshToken(userID string, role Role) (string, error) {
+func (m *Manager) GenerateRefreshToken(userID string, role string) (string, error) {
 	return m.generateToken(userID, role, "refresh", m.refreshTTL)
 }
 

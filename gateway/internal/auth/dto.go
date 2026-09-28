@@ -3,19 +3,19 @@ package auth
 type RegisterUserRequest struct {
 	Email    string `json:"email" validate:"required,email"`
 	Password string `json:"password" validate:"required,min=8"`
-	Role     string `json:"role" validate:"required"`
+	Role     string `json:"role" validate:"required,oneof=buyer seller"`
 }
 
-type RegisterUserReponseUser struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
-	Role     string `json:"role"`
+type UserResponse struct {
+	ID    string `json:"id"`
+	Email string `json:"email"`
+	Role  string `json:"role"`
 }
 
 type RegisterUserResponse struct {
-	AccessToken  string                  `json:"access_token"`
-	RefreshToken string                  `json:"refresh_token"`
-	User         RegisterUserReponseUser `json:"user"`
+	AccessToken  string       `json:"access_token"`
+	RefreshToken string       `json:"refresh_token"`
+	User         UserResponse `json:"user"`
 }
 
 type LoginUserRequest struct {

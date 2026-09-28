@@ -1,11 +1,11 @@
 package auth
 
-func RegisterUserRequestToUser(req RegisterUserRequest) User {
+func RegisterUserRequestToUser(req RegisterUserRequest, passwordHash string) User {
 	return User{
-		ID:       nil,
-		Email:    req.Email,
-		Password: req.Password,
-		Role:     req.Role,
+		ID:           nil,
+		Email:        req.Email,
+		PasswordHash: passwordHash,
+		Role:         req.Role,
 	}
 }
 
@@ -13,10 +13,9 @@ func UserToRegisterUserResponse(user User, accessToken, refreshToken string) Reg
 	return RegisterUserResponse{
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
-		User: RegisterUserReponseUser{
+		User: UserResponse{
 			Email: user.Email,
-			Password: user.Password,
-			Role: user.Role,
+			Role:  user.Role,
 		},
 	}
 }

@@ -2,13 +2,14 @@ package listings
 
 import (
 	"context"
-	"marketplace/gateway/pkg/jwt"
+	"marketplace/gateway/config"
+	"marketplace/gateway/internal/auth"
 	"marketplace/gateway/pkg/response"
 	"net/http"
 	"strconv"
-	"strings"
 
 	"github.com/go-chi/chi"
+	"github.com/go-playground/validator"
 )
 
 type Service interface {
@@ -20,54 +21,31 @@ type Service interface {
 }
 
 type ListingsHandler struct {
-	jwtManager *jwt.Manager
+	validate *validator.Validate
 	service Service
 }
 
-func NewListingsHandler(r chi.Router, jwtManager *jwt.Manager, service Service) *ListingsHandler {
+func NewListingsHandler(
+	r chi.Router, 
+	validate *validator.Validate,
+	ac config.AuthConfig,
+	service Service,
+) *ListingsHandler {
 	h := &ListingsHandler{
-		jwtManager: jwtManager,
+		validate: validate,
 		service: service,
 	}
 
 	lr := chi.NewRouter()
 	lr.Get("/", h.GetAllListings)
 	lr.Get("/{id}", h.GetOneListing)
-	lr.Post("/", h.middlewareJWT(h.PostListing(), jwt.Seller))
-	lr.Patch("/{id}", h.middlewareJWT(h.PatchListing(), jwt.Seller))
-	lr.Delete("/{id}", h.middlewareJWT(h.DeleteListing(), jwt.Seller))
+	lr.Post("/", ac.Middleware.CheckUser(h.PostListing(), auth.Seller))
+	lr.Patch("/{id}", ac.Middleware.CheckUser(h.PatchListing(), auth.Seller))
+	lr.Delete("/{id}", ac.Middleware.CheckUser(h.DeleteListing(), auth.Seller))
 
 	r.Mount("/listings", lr)
 
 	return h
-}
-
-func (h *ListingsHandler) middlewareJWT(next http.Handler, role jwt.Role) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		authorization := r.Header.Get("Authorization")
-		if authorization == "" {
-			http.Error(w, "No authorization token", http.StatusForbidden)
-			return
-		}
-
-		bearer := strings.Split(authorization, " ")
-		if len(bearer) != 2 {
-			http.Error(w, "Invalid authorization token", http.StatusBadRequest)
-			return
-		}
-
-		claims, err := h.jwtManager.Parse(bearer[0])
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		if claims.Role != role {
-			http.Error(w, "{error: Authorization provide no permission for the request}", http.StatusMethodNotAllowed)
-			return
-		}
-
-		next.ServeHTTP(w, r)
-	}
 }
 
 func (h *ListingsHandler) GetAllListings(w http.ResponseWriter, r *http.Request) {

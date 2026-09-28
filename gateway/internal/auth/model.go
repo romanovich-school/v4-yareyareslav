@@ -1,12 +1,12 @@
 package auth
 
-type UserID int
+type UserID string
 
 type User struct {
-	ID       *UserID
-	Email    string
-	Password string
-	Role     string
+	ID           *UserID
+	Email        string
+	PasswordHash string
+	Role         string
 }
 
 type JWT struct {

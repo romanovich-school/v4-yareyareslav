@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"marketplace/gateway/pkg/request"
 	"net/http"
 
@@ -17,13 +18,13 @@ type Service interface {
 }
 
 type AuthHandler struct {
-	validate validator.Validate
+	validate *validator.Validate
 	service Service
 }
 
 func NewAuthHandler(
 	r chi.Router, 
-	validate validator.Validate, 
+	validate *validator.Validate, 
 	s Service,
 ) *AuthHandler {
 	h := &AuthHandler{
@@ -54,6 +55,10 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 
 	result, err := h.service.Register(r.Context(), registerReq)
 	if err != nil {
+		if errors.Is(err, ErrEmailAlreadyExists) {
+			http.Error(w, err.Error(), http.StatusConflict)
+			return
+		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -83,6 +88,11 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 	result, err := h.service.Login(r.Context(), loginReq)
 	if err != nil {
+		if errors.Is(err, ErrWrongPassword) || errors.Is(err, ErrNoUserWithSuchEmail) {
+			http.Error(w, err.Error(), http.StatusUnauthorized)
+			return
+		} 
+
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -101,16 +111,32 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	refreshReq, err := request.Body[RefreshTokenRequest](w, r)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		writeError(
+			w,
+			http.StatusBadRequest,
+			"validation_failed",
+			"request body is invalid",
+		)
 		return
 	}
 	if err := h.validate.Struct(refreshReq); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		writeError(
+			w,
+			http.StatusBadRequest,
+			"validation_failed",
+			"request body is invalid",
+		)
 		return
 	}
 
 	result, err := h.service.Refresh(r.Context(), refreshReq)
 	if err != nil {
+		if 
+			errors.Is(err, ErrWrongTokenType) || 
+			errors.Is(err, ErrExpiredToken) {
+				http.Error(w, err.Error(), http.StatusUnauthorized)
+				return
+		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
