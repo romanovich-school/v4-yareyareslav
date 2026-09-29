@@ -45,27 +45,27 @@ func NewAuthHandler(
 func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {	
 	registerReq, err := request.Body[RegisterUserRequest](w, r)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		writeValidationError(w, err.Error())
 		return
 	}
 	if err := h.validate.Struct(registerReq); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		writeValidationError(w, err.Error())
 		return
 	}
 
 	result, err := h.service.Register(r.Context(), registerReq)
 	if err != nil {
 		if errors.Is(err, ErrEmailAlreadyExists) {
-			http.Error(w, err.Error(), http.StatusConflict)
+			writeConflictError(w, err.Error())
 			return
 		}
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeInternalError(w, err.Error())
 		return
 	}
 
 	resultJson, err := json.Marshal(result)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeInternalError(w, err.Error())
 		return
 	} 
 
@@ -78,28 +78,28 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	loginReq, err := request.Body[LoginUserRequest](w, r)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		writeValidationError(w, err.Error())
 		return
 	}
 	if err := h.validate.Struct(loginReq); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		writeValidationError(w, err.Error())
 		return
 	}
 
 	result, err := h.service.Login(r.Context(), loginReq)
 	if err != nil {
 		if errors.Is(err, ErrWrongPassword) || errors.Is(err, ErrNoUserWithSuchEmail) {
-			http.Error(w, err.Error(), http.StatusUnauthorized)
+			writeUnauthenticatedError(w, err.Error())
 			return
 		} 
 
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeInternalError(w, err.Error())
 		return
 	}
 
 	resultJson, err := json.Marshal(result)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeInternalError(w, err.Error())
 		return
 	} 
 
@@ -111,21 +111,11 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	refreshReq, err := request.Body[RefreshTokenRequest](w, r)
 	if err != nil {
-		writeError(
-			w,
-			http.StatusBadRequest,
-			"validation_failed",
-			"request body is invalid",
-		)
+		writeValidationError(w, err.Error())
 		return
 	}
 	if err := h.validate.Struct(refreshReq); err != nil {
-		writeError(
-			w,
-			http.StatusBadRequest,
-			"validation_failed",
-			"request body is invalid",
-		)
+		writeValidationError(w, err.Error())
 		return
 	}
 
@@ -133,17 +123,18 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		if 
 			errors.Is(err, ErrWrongTokenType) || 
-			errors.Is(err, ErrExpiredToken) {
-				http.Error(w, err.Error(), http.StatusUnauthorized)
+			errors.Is(err, ErrExpiredToken) ||
+			errors.Is(err, ErrCorruptedToken) {
+				writeUnauthenticatedError(w, err.Error())
 				return
 		}
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeInternalError(w, err.Error())
 		return
 	}
 
 	resultJson, err := json.Marshal(result)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeInternalError(w, err.Error())
 		return
 	} 
 	

@@ -34,6 +34,10 @@ func (m *Middleware) CheckUser(next http.Handler, role string) http.HandlerFunc 
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
+		if claims.TokenType != "access" {
+			http.Error(w, "{error: Authorization provide no permission for the request}", http.StatusMethodNotAllowed)
+			return
+		}
 		if claims.Role != role {
 			http.Error(w, "{error: Authorization provide no permission for the request}", http.StatusMethodNotAllowed)
 			return

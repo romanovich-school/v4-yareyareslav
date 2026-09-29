@@ -15,6 +15,7 @@ var ErrNoUserWithSuchEmail = errors.New("no users with such email")
 var ErrWrongPassword = errors.New("wrong password")
 var ErrWrongTokenType = errors.New("wrong token type")
 var ErrExpiredToken = errors.New("expired token")
+var ErrCorruptedToken = errors.New("corrupted token")
 
 type TokenManager interface {
 	GenerateAccessToken(userID, role string) (string, error)
@@ -119,7 +120,7 @@ func (s *AuthService) Login(ctx context.Context, req LoginUserRequest) (LoginUse
 func (s *AuthService) Refresh(ctx context.Context, req RefreshTokenRequest) (RefreshTokenResponse, error) {
 	claims, err := s.tokenManager.Parse(req.RefreshToken)
 	if err != nil {
-		return RefreshTokenResponse{}, fmt.Errorf("refresh: parse token: %w", err)
+		return RefreshTokenResponse{}, fmt.Errorf("refresh: parse token: %w", ErrCorruptedToken)
 	}
 	if claims.TokenType != "refresh" {
 		return RefreshTokenResponse{}, fmt.Errorf("refresh: parse token: %w", ErrWrongTokenType)
