@@ -13,32 +13,37 @@ type DatabaseConfig struct {
 	URL string
 }
 
-type CacheConfig struct {
-	URL string
-}
-
 type KafkaConfig struct {
 	Brokers string
+}
+
+type CatalogConfig struct {
+	Addr string
 }
 
 type Config struct {
 	GRPC     GRPCConfig
 	Database DatabaseConfig
-	Cache    CacheConfig
 	Kafka    KafkaConfig
+	Catalog  CatalogConfig
 }
 
 func Load() (*Config, error) {
 	grpcAddr := getEnv("GRPC_ADDR", ":50052")
 
 	databaseUrl, ok := os.LookupEnv("DATABASE_URL")
-	if !ok {
-		return nil, fmt.Errorf("Database is required")
+	if !ok || databaseUrl == "" {
+		return nil, fmt.Errorf("DATABASE_URL is required. Value: %s.", databaseUrl)
 	}
 
-	cacheUrl, ok := os.LookupEnv("REDIS_URL")
-	if !ok {
-		return nil, fmt.Errorf("Cache is required")
+	kafkaBrokers, ok := os.LookupEnv("KAFKA_BROKERS")
+	if !ok || kafkaBrokers == "" {
+		return nil, fmt.Errorf("KAFKA_BROKERS are required. Value: %s.", kafkaBrokers)
+	}
+
+	catalogAddr, ok := os.LookupEnv("CATALOG_GRPC_ADDR")
+	if !ok || catalogAddr == "" {
+		return nil, fmt.Errorf("CATALOG_GRPC_ADDR is required. Value: %s.", catalogAddr)
 	}
 
 	cfg := &Config{
@@ -48,11 +53,11 @@ func Load() (*Config, error) {
 		Database: DatabaseConfig{
 			URL: databaseUrl,
 		},
-		Cache: CacheConfig{
-			URL: cacheUrl,
-		},
 		Kafka: KafkaConfig{
-			Brokers: "",
+			Brokers: kafkaBrokers,
+		},
+		Catalog: CatalogConfig{
+			Addr: catalogAddr,
 		},
 	}
 
