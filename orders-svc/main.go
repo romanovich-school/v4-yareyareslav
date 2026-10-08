@@ -3,10 +3,23 @@ package main
 import (
 	"context"
 	"embed"
+	"errors"
+	"fmt"
 	"log"
+	"marketplace/gen/catalogpb"
 	"marketplace/gen/orderspb"
 	"marketplace/orders-svc/config"
+	"marketplace/orders-svc/internal/catalog"
+	"marketplace/orders-svc/internal/orders/handler"
+	kfk "marketplace/orders-svc/internal/orders/kafka"
+	"marketplace/orders-svc/internal/orders/repository"
+	"marketplace/orders-svc/internal/orders/service"
 	"net"
+	"os"
+	"os/signal"
+	"sync"
+	"syscall"
+	"time"
 
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
@@ -15,59 +28,42 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/segmentio/kafka-go"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/health"
+	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 )
-
-type ordersServer struct {
-	orderspb.UnimplementedOrdersServiceServer
-}
 
 //go:embed migrations/*.sql
 var migrationFiles embed.FS
 
-func main() {
+func run(ctx context.Context, errChan chan error) error {
+	var wg sync.WaitGroup
 	cfg, err := config.Load()
 	if err != nil {
-		log.Fatal(err)
+		return fmt.Errorf("load config: %w", err)
 	}
-
-	ctx := context.Background()
 
 	// DATABASE
 	pool, err := pgxpool.New(ctx, cfg.Database.URL)
 	if err != nil {
-		log.Fatalf("unable to create pool: %v", err)
+		return fmt.Errorf("unable to create pool: %v", err)
 	}
 	defer pool.Close()
 
 	source, err := iofs.New(migrationFiles, "migrations")
 	if err != nil {
-		log.Fatalf("unable to open embedded migrations: %v", err)
+		return fmt.Errorf("unable to open embedded migrations: %v", err)
 	}
 
 	m, err := migrate.NewWithSourceInstance("iofs", source, cfg.Database.URL)
 	if err != nil {
 		source.Close()
-		log.Fatalf("migrations failed to initialize: %v", err)
+		return fmt.Errorf("migrations failed to initialize: %v", err)
 	}
 	defer m.Close()
 
 	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
-		log.Fatalf("failed to apply migrations: %v", err)
-	}
-
-	// GRPC
-	listener, err := net.Listen("tcp", cfg.GRPC.Addr)
-	if err != nil {
-		log.Fatalf("unable to listen grpc: %v", err)
-	}
-	defer listener.Close()
-
-	server := grpc.NewServer()
-
-	orderspb.RegisterOrdersServiceServer(server, &ordersServer{})
-	log.Printf("gRPC server listening on %s", cfg.GRPC.Addr)
-	if err := server.Serve(listener); err != nil {
-		log.Fatalf("gRPC server failed: %v", err)
+		return fmt.Errorf("failed to apply migrations: %v", err)
 	}
 
 	// SERVICE
@@ -79,4 +75,117 @@ func main() {
 	}
 	defer writer.Close()
 
+	ordersRepository := repository.NewPGRepository(pool, writer)
+
+	kafkaWorkerCtx, cancelWorker := context.WithCancel(context.Background())
+	defer func() {
+		cancelWorker()
+		wg.Wait()
+	}()
+
+	kafkaWorker := kfk.NewWorker(ordersRepository)
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		kafkaWorker.Start(kafkaWorkerCtx)
+	}()
+
+	conn, err := grpc.NewClient(
+		cfg.Catalog.Addr,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
+	if err != nil {
+		return fmt.Errorf("create catalog client: %w", err)
+	}
+	defer conn.Close()
+
+	catalogClient := catalog.NewClient(catalogpb.NewCatalogServiceClient(conn))
+	ordersService := service.NewOrdersService(ordersRepository, catalogClient)
+
+	// GRPC
+	listener, err := net.Listen("tcp", cfg.GRPC.Addr)
+	if err != nil {
+		return fmt.Errorf("unable to listen grpc: %v", err)
+	}
+	defer listener.Close()
+
+	server := grpc.NewServer()
+
+	ordersServer := handler.NewOrdersServer(ordersService)
+	orderspb.RegisterOrdersServiceServer(server, ordersServer)
+	log.Printf("gRPC server listening on %s", cfg.GRPC.Addr)
+
+	healthServer := health.NewServer()
+	healthpb.RegisterHealthServer(server, healthServer)
+
+	healthServer.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)
+	healthServer.SetServingStatus(
+		orderspb.OrdersService_ServiceDesc.ServiceName,
+		healthpb.HealthCheckResponse_SERVING,
+	)
+
+	go func() {
+		errChan <- server.Serve(listener)
+	}()
+
+	// SHUTDOWN
+	select {
+	case <-ctx.Done():
+		log.Println("shutdown started")
+	case err := <-errChan:
+		server.Stop()
+		if err == nil {
+			return errors.New("gRPC server stopped unexpectedly")
+		}
+		return fmt.Errorf("gRPC server failed: %v", err)
+	}
+
+	grpcStopped := make(chan struct{})
+	go func() {
+		healthServer.Shutdown()
+		server.GracefulStop()
+		close(grpcStopped)
+	}()
+
+	var shutdownErr error
+	grpcTimer := time.NewTimer(10 * time.Second)
+
+	select {
+	case <-grpcStopped:
+	case <-grpcTimer.C:
+		log.Println("ERROR: gRPC shutdown timed out")
+		shutdownErr = errors.New("gRPC shutdown timed out")
+		server.Stop()
+		<-grpcStopped
+	}
+	grpcTimer.Stop()
+
+	log.Println("allowing outbox worker to publish remaining events")
+
+	drainTimer := time.NewTimer(5 * time.Second)
+	<-drainTimer.C
+
+	cancelWorker()
+	wg.Wait()
+
+	return shutdownErr
+}
+
+func main() {
+	errChan := make(chan error, 1)
+	ctx, stop := signal.NotifyContext(
+		context.Background(),
+		syscall.SIGINT,
+		syscall.SIGTERM,
+	)
+	defer stop()
+
+	if err := run(ctx, errChan); err != nil {
+		log.Printf("ERROR: orders service failed: %v", err)
+		stop()
+		os.Exit(1)
+	}
+
+	fmt.Println("Application shutdown complete.")
 }

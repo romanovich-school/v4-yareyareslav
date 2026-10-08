@@ -245,7 +245,7 @@ func (r *PGRepository) List(
 func (r *PGRepository) GetByID(
 	ctx context.Context,
 	orderID,
-	buyer_id string,
+	buyerID string,
 ) (*model.Order, error) {
 	var order model.Order
 	var createdAt time.Time
@@ -257,7 +257,7 @@ func (r *PGRepository) GetByID(
 		WHERE id = $1 AND buyer_id = $2
 		`,
 		orderID,
-		buyer_id,
+		buyerID,
 	).Scan(
 		&order.ID,
 		&order.BuyerID,
