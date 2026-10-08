@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strings"
 )
 
 type GRPCConfig struct {
@@ -14,7 +15,7 @@ type DatabaseConfig struct {
 }
 
 type KafkaConfig struct {
-	Brokers string
+	Brokers []string
 }
 
 type CatalogConfig struct {
@@ -36,10 +37,11 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("DATABASE_URL is required. Value: %s.", databaseUrl)
 	}
 
-	kafkaBrokers, ok := os.LookupEnv("KAFKA_BROKERS")
-	if !ok || kafkaBrokers == "" {
-		return nil, fmt.Errorf("KAFKA_BROKERS are required. Value: %s.", kafkaBrokers)
+	kafkaBrokersEnv, ok := os.LookupEnv("KAFKA_BROKERS")
+	if !ok || kafkaBrokersEnv == "" {
+		return nil, fmt.Errorf("KAFKA_BROKERS are required. Value: %s.", kafkaBrokersEnv)
 	}
+	kafkaBrokers := strings.Split(kafkaBrokersEnv, ",")
 
 	catalogAddr, ok := os.LookupEnv("CATALOG_GRPC_ADDR")
 	if !ok || catalogAddr == "" {

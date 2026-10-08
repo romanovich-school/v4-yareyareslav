@@ -5,3 +5,6 @@ CREATE TABLE idempotency_keys (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     PRIMARY KEY (buyer_id, key)
 );
+
+DELETE FROM idempotency_keys
+WHERE created_at < NOW() - INTERVAL '24 hours';
