@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"log/slog"
 	"marketplace/gen/catalogpb"
 	"marketplace/gen/orderspb"
 	"marketplace/orders-svc/config"
@@ -17,7 +18,6 @@ import (
 	"net"
 	"os"
 	"os/signal"
-	"sync"
 	"syscall"
 	"time"
 
@@ -36,8 +36,8 @@ import (
 //go:embed migrations/*.sql
 var migrationFiles embed.FS
 
-func run(ctx context.Context, errChan chan error) error {
-	var wg sync.WaitGroup
+func run(ctx context.Context, errChan chan error) (runErr error) {
+	workerStopped := true
 	cfg, err := config.Load()
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
@@ -48,7 +48,11 @@ func run(ctx context.Context, errChan chan error) error {
 	if err != nil {
 		return fmt.Errorf("unable to create pool: %v", err)
 	}
-	defer pool.Close()
+	defer func() {
+		if workerStopped {
+			pool.Close()
+		}
+	}()
 
 	source, err := iofs.New(migrationFiles, "migrations")
 	if err != nil {
@@ -73,21 +77,33 @@ func run(ctx context.Context, errChan chan error) error {
 		RequiredAcks: kafka.RequireAll,
 		Async:        false,
 	}
-	defer writer.Close()
+	defer func() {
+		if workerStopped {
+			if err := writer.Close(); err != nil {
+				runErr = errors.Join(runErr, fmt.Errorf("close Kafka writer: %w", err))
+			}
+		}
+	}()
 
 	ordersRepository := repository.NewPGRepository(pool, writer)
 
 	kafkaWorkerCtx, cancelWorker := context.WithCancel(context.Background())
+	workerDone := make(chan struct{})
 	defer func() {
 		cancelWorker()
-		wg.Wait()
+		stopCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		if err := waitWorker(stopCtx, workerDone); err != nil {
+			workerStopped = false
+			slog.Error("outbox worker shutdown timed out", "error", err)
+			runErr = errors.Join(runErr, fmt.Errorf("stop outbox worker: %w", err))
+		}
 	}()
 
 	kafkaWorker := kfk.NewWorker(ordersRepository)
 
-	wg.Add(1)
 	go func() {
-		defer wg.Done()
+		defer close(workerDone)
 		kafkaWorker.Start(kafkaWorkerCtx)
 	}()
 
@@ -110,7 +126,7 @@ func run(ctx context.Context, errChan chan error) error {
 	}
 	defer listener.Close()
 
-	server := grpc.NewServer()
+	server := grpc.NewServer(grpc.UnaryInterceptor(handler.LoggingInterceptor))
 
 	ordersServer := handler.NewOrdersServer(ordersService)
 	orderspb.RegisterOrdersServiceServer(server, ordersServer)
@@ -166,13 +182,11 @@ func run(ctx context.Context, errChan chan error) error {
 	drainTimer := time.NewTimer(5 * time.Second)
 	<-drainTimer.C
 
-	cancelWorker()
-	wg.Wait()
-
 	return shutdownErr
 }
 
 func main() {
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
 	errChan := make(chan error, 1)
 	ctx, stop := signal.NotifyContext(
 		context.Background(),

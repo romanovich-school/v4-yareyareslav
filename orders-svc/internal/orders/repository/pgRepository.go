@@ -64,7 +64,7 @@ func (r *PGRepository) Create(
 	if err != nil {
 		return nil, fmt.Errorf("begin create order transaction: %w", err)
 	}
-	defer tx.Rollback(context.WithoutCancel(ctx))
+	defer rollbackTransaction(ctx, tx)
 
 	if idempotencyKey != "" {
 		var orderID *string
@@ -323,7 +323,7 @@ func (r *PGRepository) SendUnpublishedEvents(
 	if err != nil {
 		return nil, fmt.Errorf("start get unpublished transaction: %w", err)
 	}
-	defer tx.Rollback(context.WithoutCancel(ctx))
+	defer rollbackTransaction(ctx, tx)
 
 	rows, err := tx.Query(
 		ctx,

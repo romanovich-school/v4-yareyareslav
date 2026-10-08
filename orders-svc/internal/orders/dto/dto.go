@@ -14,6 +14,7 @@ type OrderResponse struct {
 }
 
 type CreateOrderResponse struct {
+	Replayed  bool   `json:"-"`
 	ID        string `json:"id"`
 	BuyerID   string `json:"buyer_id"`
 	ListingID string `json:"listing_id"`

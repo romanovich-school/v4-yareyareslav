@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"marketplace/orders-svc/internal/orders/dto"
 	"marketplace/orders-svc/internal/orders/model"
 	"time"
@@ -12,6 +13,7 @@ import (
 type Repository interface {
 	Create(ctx context.Context, order model.Order, idempKey string) (*model.Order, error)
 	ReserveIdempotencyKey(ctx context.Context, buyerID, key string) (bool, error)
+	ReleaseIdempotencyKey(ctx context.Context, buyerID, key string) (bool, error)
 	GetIdempotencyKeyState(ctx context.Context, buyerID, key string) (*model.IdempotencyKeyState, error)
 	GetByID(ctx context.Context, orderID, buyerID string) (*model.Order, error)
 	List(ctx context.Context, buyerID string, limit, offset int) ([]model.Order, int64, error)
@@ -23,6 +25,7 @@ type Catalog interface {
 
 var ErrInvalidLimit = errors.New("limit out of range between 0 and 100")
 var ErrInvalidOffset = errors.New("offset must be a positive number")
+var ErrInvalidQty = errors.New("qty must be positive")
 
 type OrdersService struct {
 	rep     Repository
@@ -41,12 +44,29 @@ func (s *OrdersService) Create(
 	createDto dto.CreateOrderRequest,
 	buyerID string,
 	idempKey string,
-) (*dto.CreateOrderResponse, error) {
+) (response *dto.CreateOrderResponse, err error) {
+	if createDto.Qty <= 0 {
+		return nil, fmt.Errorf("create order: %w", ErrInvalidQty)
+	}
+
+	reservedKey := false
+	defer func() {
+		if !reservedKey || err == nil {
+			return
+		}
+		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
+		defer cancel()
+		if _, cleanupErr := s.rep.ReleaseIdempotencyKey(cleanupCtx, buyerID, idempKey); cleanupErr != nil {
+			slog.WarnContext(cleanupCtx, "release idempotency key failed", "error", cleanupErr)
+		}
+	}()
+
 	if idempKey != "" {
 		res, err := s.rep.ReserveIdempotencyKey(ctx, buyerID, idempKey)
 		if err != nil {
 			return nil, fmt.Errorf("create order: %w", err)
 		}
+		reservedKey = res
 
 		if !res {
 			ticker := time.NewTicker(500 * time.Millisecond)
@@ -75,6 +95,7 @@ func (s *OrdersService) Create(
 						ListingID: order.ListingID,
 						Qty:       order.Qty,
 						CreatedAt: order.CreatedAt,
+						Replayed:  true,
 					}, nil
 				}
 
@@ -84,6 +105,7 @@ func (s *OrdersService) Create(
 						return nil, fmt.Errorf("create order: %w", err)
 					}
 					if reserved {
+						reservedKey = true
 						break
 					}
 				}
@@ -98,7 +120,7 @@ func (s *OrdersService) Create(
 	}
 
 	reserveCtx, cancel := context.WithTimeout(ctx, time.Second*2)
-	err := s.catalog.Reserve(reserveCtx, createDto.ListingID, createDto.Qty)
+	err = s.catalog.Reserve(reserveCtx, createDto.ListingID, createDto.Qty)
 	cancel()
 
 	if err != nil {

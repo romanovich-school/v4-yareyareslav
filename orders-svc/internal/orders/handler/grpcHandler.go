@@ -8,7 +8,9 @@ import (
 	"marketplace/orders-svc/internal/orders/service"
 	"time"
 
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -63,6 +65,12 @@ func (s *OrdersServer) Create(
 	})
 	if err != nil {
 		return nil, status.Error(codes.Internal, "invalid order timestamp")
+	}
+
+	if order.Replayed {
+		if err := grpc.SetHeader(ctx, metadata.Pairs("x-idempotent-replay", "true")); err != nil {
+			return nil, status.Error(codes.Internal, "set replay header failed")
+		}
 	}
 
 	return &orderspb.CreateOrderResponse{Order: result}, nil
@@ -132,6 +140,9 @@ func toGRPCError(err error) error {
 
 	case errors.Is(err, service.ErrInvalidOffset):
 		return status.Error(codes.InvalidArgument, "offset must be non-negative")
+
+	case errors.Is(err, service.ErrInvalidQty):
+		return status.Error(codes.InvalidArgument, "qty must be positive")
 	}
 
 	if st, ok := status.FromError(err); ok {
