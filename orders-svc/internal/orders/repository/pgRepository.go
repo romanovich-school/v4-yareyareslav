@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/segmentio/kafka-go"
 )
 
@@ -19,12 +19,19 @@ type MessageWriter interface {
 	WriteMessages(context.Context, ...kafka.Message) error
 }
 
+type Pool interface {
+	Begin(context.Context) (pgx.Tx, error)
+	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
+	Query(context.Context, string, ...any) (pgx.Rows, error)
+	QueryRow(context.Context, string, ...any) pgx.Row
+}
+
 type PGRepository struct {
-	pool *pgxpool.Pool
+	pool Pool
 	mw   MessageWriter
 }
 
-func NewPGRepository(pool *pgxpool.Pool, mw MessageWriter) *PGRepository {
+func NewPGRepository(pool Pool, mw MessageWriter) *PGRepository {
 	return &PGRepository{
 		pool: pool,
 		mw:   mw,
