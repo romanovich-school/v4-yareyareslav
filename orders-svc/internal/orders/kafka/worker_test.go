@@ -41,7 +41,7 @@ func TestWorker_PeriodicPublication(t *testing.T) {
 				t.Errorf("limit = %d, want 100", limit)
 			}
 			deadline, ok := ctx.Deadline()
-			if !ok || deadline.Sub(time.Now()) != 2*time.Second {
+			if !ok || time.Until(deadline) != 2*time.Second {
 				t.Errorf("publication deadline = %v, want 2 seconds from now", deadline)
 			}
 			mu.Lock()

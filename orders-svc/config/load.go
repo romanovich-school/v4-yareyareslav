@@ -34,18 +34,18 @@ func Load() (*Config, error) {
 
 	databaseUrl, ok := os.LookupEnv("DATABASE_URL")
 	if !ok || databaseUrl == "" {
-		return nil, fmt.Errorf("DATABASE_URL is required. Value: %s.", databaseUrl)
+		return nil, fmt.Errorf("DATABASE_URL is required. Value: %s", databaseUrl)
 	}
 
 	kafkaBrokersEnv, ok := os.LookupEnv("KAFKA_BROKERS")
 	if !ok || kafkaBrokersEnv == "" {
-		return nil, fmt.Errorf("KAFKA_BROKERS are required. Value: %s.", kafkaBrokersEnv)
+		return nil, fmt.Errorf("KAFKA_BROKERS are required. Value: %s", kafkaBrokersEnv)
 	}
 	kafkaBrokers := strings.Split(kafkaBrokersEnv, ",")
 
 	catalogAddr, ok := os.LookupEnv("CATALOG_GRPC_ADDR")
 	if !ok || catalogAddr == "" {
-		return nil, fmt.Errorf("CATALOG_GRPC_ADDR is required. Value: %s.", catalogAddr)
+		return nil, fmt.Errorf("CATALOG_GRPC_ADDR is required. Value: %s", catalogAddr)
 	}
 
 	cfg := &Config{
