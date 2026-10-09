@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"marketplace/orders-svc/internal/orders/model"
+	"sync"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -29,6 +30,12 @@ func TestWorker_PeriodicPublication(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		var contexts []context.Context
 		var callTimes []time.Time
+		var mu sync.Mutex
+		snapshot := func() ([]context.Context, []time.Time) {
+			mu.Lock()
+			defer mu.Unlock()
+			return append([]context.Context(nil), contexts...), append([]time.Time(nil), callTimes...)
+		}
 		publisher := publisherFunc(func(ctx context.Context, limit int) ([]model.OutboxEvent, error) {
 			if limit != 100 {
 				t.Errorf("limit = %d, want 100", limit)
@@ -37,8 +44,10 @@ func TestWorker_PeriodicPublication(t *testing.T) {
 			if !ok || deadline.Sub(time.Now()) != 2*time.Second {
 				t.Errorf("publication deadline = %v, want 2 seconds from now", deadline)
 			}
+			mu.Lock()
 			contexts = append(contexts, ctx)
 			callTimes = append(callTimes, time.Now())
+			mu.Unlock()
 			return []model.OutboxEvent{{ID: 1}}, nil
 		})
 		done := startTestWorker(ctx, publisher)
@@ -48,7 +57,8 @@ func TestWorker_PeriodicPublication(t *testing.T) {
 
 		time.Sleep(199 * time.Millisecond)
 		synctest.Wait()
-		if len(callTimes) != 0 {
+		_, times := snapshot()
+		if len(times) != 0 {
 			t.Fatal("publication occurred before the first tick")
 		}
 		for i := 1; i <= 2; i++ {
@@ -58,21 +68,23 @@ func TestWorker_PeriodicPublication(t *testing.T) {
 				time.Sleep(200 * time.Millisecond)
 			}
 			synctest.Wait()
-			if len(callTimes) != i {
-				t.Fatalf("calls = %d, want %d", len(callTimes), i)
+			publicationContexts, times := snapshot()
+			if len(times) != i {
+				t.Fatalf("calls = %d, want %d", len(times), i)
 			}
-			if elapsed := callTimes[i-1].Sub(started); elapsed != time.Duration(i)*200*time.Millisecond {
+			if elapsed := times[i-1].Sub(started); elapsed != time.Duration(i)*200*time.Millisecond {
 				t.Errorf("call %d at %v, want %v", i, elapsed, time.Duration(i)*200*time.Millisecond)
 			}
-			if !errors.Is(contexts[i-1].Err(), context.Canceled) {
-				t.Errorf("publication context was not canceled after return: %v", contexts[i-1].Err())
+			if !errors.Is(publicationContexts[i-1].Err(), context.Canceled) {
+				t.Errorf("publication context was not canceled after return: %v", publicationContexts[i-1].Err())
 			}
 		}
 		cancel()
 		<-done
 		time.Sleep(time.Second)
-		if len(callTimes) != 2 {
-			t.Errorf("calls after shutdown = %d, want 2", len(callTimes))
+		_, times = snapshot()
+		if len(times) != 2 {
+			t.Errorf("calls after shutdown = %d, want 2", len(times))
 		}
 	})
 }
