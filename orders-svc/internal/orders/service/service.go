@@ -8,6 +8,8 @@ import (
 	"marketplace/orders-svc/internal/orders/dto"
 	"marketplace/orders-svc/internal/orders/model"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 type Repository interface {
@@ -26,6 +28,8 @@ type Catalog interface {
 var ErrInvalidLimit = errors.New("limit out of range between 0 and 100")
 var ErrInvalidOffset = errors.New("offset must be a positive number")
 var ErrInvalidQty = errors.New("qty must be positive")
+var ErrInvalidBuyerID = errors.New("buyer_id has invalid format")
+var ErrInvalidListingID = errors.New("listing_id has invalid format")
 
 type OrdersService struct {
 	rep     Repository
@@ -47,6 +51,15 @@ func (s *OrdersService) Create(
 ) (response *dto.CreateOrderResponse, err error) {
 	if createDto.Qty <= 0 {
 		return nil, fmt.Errorf("create order: %w", ErrInvalidQty)
+	}
+
+	_, err = uuid.Parse(buyerID)
+	if err != nil || len(buyerID) != 36 {
+		return nil, fmt.Errorf("create order: %w", ErrInvalidBuyerID)
+	}
+	_, err = uuid.Parse(createDto.ListingID)
+	if err != nil || len(createDto.ListingID) != 36 {
+		return nil, fmt.Errorf("create order: %w", ErrInvalidListingID)
 	}
 
 	reservedKey := false
@@ -161,6 +174,10 @@ func (s *OrdersService) List(
 	}
 	if offset < 0 {
 		return nil, fmt.Errorf("list orders: %w", ErrInvalidOffset)
+	}
+	_, err := uuid.Parse(buyerID)
+	if err != nil || len(buyerID) != 36 {
+		return nil, fmt.Errorf("list orders: %w", ErrInvalidBuyerID)
 	}
 
 	orders, totalCount, err := s.rep.List(ctx, buyerID, limit, offset)

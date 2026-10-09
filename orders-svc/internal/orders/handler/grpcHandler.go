@@ -143,6 +143,12 @@ func toGRPCError(err error) error {
 
 	case errors.Is(err, service.ErrInvalidQty):
 		return status.Error(codes.InvalidArgument, "qty must be positive")
+
+	case errors.Is(err, service.ErrInvalidBuyerID):
+		return status.Error(codes.InvalidArgument, "buyer_id must be a valid UUID")
+
+	case errors.Is(err, service.ErrInvalidListingID):
+		return status.Error(codes.InvalidArgument, "listing_id must be a valid UUID")
 	}
 
 	if st, ok := status.FromError(err); ok {
