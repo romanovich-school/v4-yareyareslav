@@ -15,7 +15,8 @@ type DatabaseConfig struct {
 }
 
 type CacheConfig struct {
-	URL string
+	URL      string
+	Password string
 }
 
 type KafkaConfig struct {
@@ -47,6 +48,15 @@ func Load() (*Config, error) {
 	if !ok || redisUrl == "" {
 		return nil, fmt.Errorf("REDIS_URL is required. Value: %s", redisUrl)
 	}
+	redisUrlSplit := strings.Split(redisUrl, ":")
+	if len(redisUrlSplit) == 2 {
+		redisUrl = redisUrlSplit[1]
+	}
+
+	redisPassword, ok := os.LookupEnv("REDIS_PASSWORD")
+	if !ok || redisPassword == "" {
+		return nil, fmt.Errorf("REDIS_PASSWORD is required. Value: %s", redisPassword)
+	}
 
 	cfg := &Config{
 		GRPC: GRPCConfig{
@@ -59,7 +69,8 @@ func Load() (*Config, error) {
 			Brokers: kafkaBrokers,
 		},
 		Cache: CacheConfig{
-			URL: redisUrl,
+			URL:      redisUrl,
+			Password: redisPassword,
 		},
 	}
 
