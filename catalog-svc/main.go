@@ -3,22 +3,30 @@ package main
 import (
 	"context"
 	"embed"
+	"errors"
 	"fmt"
 	"log"
 	"log/slog"
 	"marketplace/catalog-svc/config"
+	"marketplace/catalog-svc/internal/listings/handler"
 	"marketplace/catalog-svc/internal/listings/repository"
 	"marketplace/catalog-svc/internal/listings/service"
 	"marketplace/catalog-svc/internal/listings/service/adapter"
+	"marketplace/gen/catalogpb"
+	"net"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
 	"github.com/golang-migrate/migrate/v4"
+	_ "github.com/golang-migrate/migrate/v4/database/postgres"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/health"
+	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 )
 
 //go:embed migrations/*.sql
@@ -81,9 +89,66 @@ func run(ctx context.Context, errChan chan error) error {
 
 	// SERVICE
 	listingsPGRepository := repository.NewPGRepository(pool)
-	_ = service.NewCatalogService(listingsPGRepository, adaptedRdb)
+	listingsService := service.NewCatalogService(listingsPGRepository, adaptedRdb)
+	listingsGRPCHandler := handler.NewGRPCHandler(listingsService)
 
-	return nil
+	// GRPC
+	listener, err := net.Listen("tcp", cfg.GRPC.Addr)
+	if err != nil {
+		return fmt.Errorf("grpc start: %w", err)
+	}
+	defer listener.Close()
+
+	server := grpc.NewServer()
+	catalogpb.RegisterCatalogServiceServer(server, listingsGRPCHandler)
+	log.Printf("gRPC server listening on %s", cfg.GRPC.Addr)
+
+	healthServer := health.NewServer()
+	healthpb.RegisterHealthServer(server, healthServer)
+
+	healthServer.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)
+	healthServer.SetServingStatus(
+		catalogpb.CatalogService_ServiceDesc.ServiceName,
+		healthpb.HealthCheckResponse_SERVING,
+	)
+
+	go func() {
+		errChan <- server.Serve(listener)
+	}()
+
+	select {
+	case <-ctx.Done():
+		log.Println("shutdown started")
+	case err := <-errChan:
+		healthServer.Shutdown()
+		server.Stop()
+		if err == nil {
+			return errors.New("gRPC server stopped unexpectedly")
+		}
+		return fmt.Errorf("gRPC server failed: %v", err)
+	}
+
+	grpcStopped := make(chan struct{})
+	go func() {
+		healthServer.Shutdown()
+		server.GracefulStop()
+		close(grpcStopped)
+	}()
+
+	var shutdownErr error
+	grpcTimer := time.NewTimer(10 * time.Second)
+
+	select {
+	case <-grpcStopped:
+	case <-grpcTimer.C:
+		log.Println("ERROR: gRPC shutdown timed out")
+		shutdownErr = errors.New("gRPC shutdown timed out")
+		server.Stop()
+		<-grpcStopped
+	}
+	grpcTimer.Stop()
+
+	return shutdownErr
 }
 
 func main() {
@@ -92,6 +157,7 @@ func main() {
 		syscall.SIGINT,
 		syscall.SIGTERM,
 	)
+	defer stop()
 	errChan := make(chan error, 1)
 	if err := run(ctx, errChan); err != nil {
 		log.Printf("ERROR: catalog service failed: %v", err)
