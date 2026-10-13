@@ -20,12 +20,12 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	CatalogService_Create_FullMethodName  = "/proto.catalog.v1.CatalogService/Create"
-	CatalogService_Get_FullMethodName     = "/proto.catalog.v1.CatalogService/Get"
-	CatalogService_List_FullMethodName    = "/proto.catalog.v1.CatalogService/List"
-	CatalogService_Update_FullMethodName  = "/proto.catalog.v1.CatalogService/Update"
-	CatalogService_Delete_FullMethodName  = "/proto.catalog.v1.CatalogService/Delete"
-	CatalogService_Reserve_FullMethodName = "/proto.catalog.v1.CatalogService/Reserve"
+	CatalogService_Create_FullMethodName  = "/marketplace.catalog.v1.CatalogService/Create"
+	CatalogService_Get_FullMethodName     = "/marketplace.catalog.v1.CatalogService/Get"
+	CatalogService_List_FullMethodName    = "/marketplace.catalog.v1.CatalogService/List"
+	CatalogService_Update_FullMethodName  = "/marketplace.catalog.v1.CatalogService/Update"
+	CatalogService_Delete_FullMethodName  = "/marketplace.catalog.v1.CatalogService/Delete"
+	CatalogService_Reserve_FullMethodName = "/marketplace.catalog.v1.CatalogService/Reserve"
 )
 
 // CatalogServiceClient is the client API for CatalogService service.
@@ -279,7 +279,7 @@ func _CatalogService_Reserve_Handler(srv interface{}, ctx context.Context, dec f
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var CatalogService_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "proto.catalog.v1.CatalogService",
+	ServiceName: "marketplace.catalog.v1.CatalogService",
 	HandlerType: (*CatalogServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{

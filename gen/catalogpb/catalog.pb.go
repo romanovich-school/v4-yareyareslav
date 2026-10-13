@@ -727,7 +727,7 @@ var File_marketplace_catalog_v1_catalog_proto protoreflect.FileDescriptor
 
 const file_marketplace_catalog_v1_catalog_proto_rawDesc = "" +
 	"\n" +
-	"$marketplace/catalog/v1/catalog.proto\x12\x10proto.catalog.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1bgoogle/protobuf/empty.proto\"\xc7\x01\n" +
+	"$marketplace/catalog/v1/catalog.proto\x12\x16marketplace.catalog.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1bgoogle/protobuf/empty.proto\"\xc7\x01\n" +
 	"\aListing\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1b\n" +
 	"\tseller_id\x18\x02 \x01(\tR\bsellerId\x12\x14\n" +
@@ -742,20 +742,20 @@ const file_marketplace_catalog_v1_catalog_proto_rawDesc = "" +
 	"\x05title\x18\x02 \x01(\tR\x05title\x12\x14\n" +
 	"\x05price\x18\x03 \x01(\x03R\x05price\x12\x19\n" +
 	"\x05stock\x18\x04 \x01(\x03H\x00R\x05stock\x88\x01\x01B\b\n" +
-	"\x06_stock\"L\n" +
-	"\x15CreateCatalogResponse\x123\n" +
-	"\alisting\x18\x01 \x01(\v2\x19.proto.catalog.v1.ListingR\alisting\"#\n" +
+	"\x06_stock\"R\n" +
+	"\x15CreateCatalogResponse\x129\n" +
+	"\alisting\x18\x01 \x01(\v2\x1f.marketplace.catalog.v1.ListingR\alisting\"#\n" +
 	"\x11GetCatalogRequest\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\tR\x02id\"I\n" +
-	"\x12GetCatalogResponse\x123\n" +
-	"\alisting\x18\x01 \x01(\v2\x19.proto.catalog.v1.ListingR\alisting\"a\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\"O\n" +
+	"\x12GetCatalogResponse\x129\n" +
+	"\alisting\x18\x01 \x01(\v2\x1f.marketplace.catalog.v1.ListingR\alisting\"a\n" +
 	"\x12ListCatalogRequest\x12\x19\n" +
 	"\x05limit\x18\x01 \x01(\x03H\x00R\x05limit\x88\x01\x01\x12\x1b\n" +
 	"\x06offset\x18\x02 \x01(\x03H\x01R\x06offset\x88\x01\x01B\b\n" +
 	"\x06_limitB\t\n" +
-	"\a_offset\"\\\n" +
-	"\x13ListCatalogResponse\x12/\n" +
-	"\x05items\x18\x01 \x03(\v2\x19.proto.catalog.v1.ListingR\x05items\x12\x14\n" +
+	"\a_offset\"b\n" +
+	"\x13ListCatalogResponse\x125\n" +
+	"\x05items\x18\x01 \x03(\v2\x1f.marketplace.catalog.v1.ListingR\x05items\x12\x14\n" +
 	"\x05total\x18\x02 \x01(\x03R\x05total\"\xb2\x01\n" +
 	"\x14UpdateCatalogRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1b\n" +
@@ -765,9 +765,9 @@ const file_marketplace_catalog_v1_catalog_proto_rawDesc = "" +
 	"\x05stock\x18\x05 \x01(\x03H\x02R\x05stock\x88\x01\x01B\b\n" +
 	"\x06_titleB\b\n" +
 	"\x06_priceB\b\n" +
-	"\x06_stock\"L\n" +
-	"\x15UpdateCatalogResponse\x123\n" +
-	"\alisting\x18\x01 \x01(\v2\x19.proto.catalog.v1.ListingR\alisting\"C\n" +
+	"\x06_stock\"R\n" +
+	"\x15UpdateCatalogResponse\x129\n" +
+	"\alisting\x18\x01 \x01(\v2\x1f.marketplace.catalog.v1.ListingR\alisting\"C\n" +
 	"\x14DeleteCatalogRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1b\n" +
 	"\tseller_id\x18\x02 \x01(\tR\bsellerId\"\x17\n" +
@@ -777,14 +777,14 @@ const file_marketplace_catalog_v1_catalog_proto_rawDesc = "" +
 	"listing_id\x18\x01 \x01(\tR\tlistingId\x12\x10\n" +
 	"\x03qty\x18\x02 \x01(\x03R\x03qty\"6\n" +
 	"\x16ReserveCatalogResponse\x12\x1c\n" +
-	"\tremaining\x18\x01 \x01(\x03R\tremaining2\x95\x04\n" +
-	"\x0eCatalogService\x12Y\n" +
-	"\x06Create\x12&.proto.catalog.v1.CreateCatalogRequest\x1a'.proto.catalog.v1.CreateCatalogResponse\x12P\n" +
-	"\x03Get\x12#.proto.catalog.v1.GetCatalogRequest\x1a$.proto.catalog.v1.GetCatalogResponse\x12S\n" +
-	"\x04List\x12$.proto.catalog.v1.ListCatalogRequest\x1a%.proto.catalog.v1.ListCatalogResponse\x12Y\n" +
-	"\x06Update\x12&.proto.catalog.v1.UpdateCatalogRequest\x1a'.proto.catalog.v1.UpdateCatalogResponse\x12H\n" +
-	"\x06Delete\x12&.proto.catalog.v1.DeleteCatalogRequest\x1a\x16.google.protobuf.Empty\x12\\\n" +
-	"\aReserve\x12'.proto.catalog.v1.ReserveCatalogRequest\x1a(.proto.catalog.v1.ReserveCatalogResponseB\x1bZ\x19marketplace/gen/catalogpbb\x06proto3"
+	"\tremaining\x18\x01 \x01(\x03R\tremaining2\xd7\x04\n" +
+	"\x0eCatalogService\x12e\n" +
+	"\x06Create\x12,.marketplace.catalog.v1.CreateCatalogRequest\x1a-.marketplace.catalog.v1.CreateCatalogResponse\x12\\\n" +
+	"\x03Get\x12).marketplace.catalog.v1.GetCatalogRequest\x1a*.marketplace.catalog.v1.GetCatalogResponse\x12_\n" +
+	"\x04List\x12*.marketplace.catalog.v1.ListCatalogRequest\x1a+.marketplace.catalog.v1.ListCatalogResponse\x12e\n" +
+	"\x06Update\x12,.marketplace.catalog.v1.UpdateCatalogRequest\x1a-.marketplace.catalog.v1.UpdateCatalogResponse\x12N\n" +
+	"\x06Delete\x12,.marketplace.catalog.v1.DeleteCatalogRequest\x1a\x16.google.protobuf.Empty\x12h\n" +
+	"\aReserve\x12-.marketplace.catalog.v1.ReserveCatalogRequest\x1a..marketplace.catalog.v1.ReserveCatalogResponseB\x1bZ\x19marketplace/gen/catalogpbb\x06proto3"
 
 var (
 	file_marketplace_catalog_v1_catalog_proto_rawDescOnce sync.Once
@@ -800,40 +800,40 @@ func file_marketplace_catalog_v1_catalog_proto_rawDescGZIP() []byte {
 
 var file_marketplace_catalog_v1_catalog_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
 var file_marketplace_catalog_v1_catalog_proto_goTypes = []any{
-	(*Listing)(nil),                // 0: proto.catalog.v1.Listing
-	(*CreateCatalogRequest)(nil),   // 1: proto.catalog.v1.CreateCatalogRequest
-	(*CreateCatalogResponse)(nil),  // 2: proto.catalog.v1.CreateCatalogResponse
-	(*GetCatalogRequest)(nil),      // 3: proto.catalog.v1.GetCatalogRequest
-	(*GetCatalogResponse)(nil),     // 4: proto.catalog.v1.GetCatalogResponse
-	(*ListCatalogRequest)(nil),     // 5: proto.catalog.v1.ListCatalogRequest
-	(*ListCatalogResponse)(nil),    // 6: proto.catalog.v1.ListCatalogResponse
-	(*UpdateCatalogRequest)(nil),   // 7: proto.catalog.v1.UpdateCatalogRequest
-	(*UpdateCatalogResponse)(nil),  // 8: proto.catalog.v1.UpdateCatalogResponse
-	(*DeleteCatalogRequest)(nil),   // 9: proto.catalog.v1.DeleteCatalogRequest
-	(*DeleteCatalogResponse)(nil),  // 10: proto.catalog.v1.DeleteCatalogResponse
-	(*ReserveCatalogRequest)(nil),  // 11: proto.catalog.v1.ReserveCatalogRequest
-	(*ReserveCatalogResponse)(nil), // 12: proto.catalog.v1.ReserveCatalogResponse
+	(*Listing)(nil),                // 0: marketplace.catalog.v1.Listing
+	(*CreateCatalogRequest)(nil),   // 1: marketplace.catalog.v1.CreateCatalogRequest
+	(*CreateCatalogResponse)(nil),  // 2: marketplace.catalog.v1.CreateCatalogResponse
+	(*GetCatalogRequest)(nil),      // 3: marketplace.catalog.v1.GetCatalogRequest
+	(*GetCatalogResponse)(nil),     // 4: marketplace.catalog.v1.GetCatalogResponse
+	(*ListCatalogRequest)(nil),     // 5: marketplace.catalog.v1.ListCatalogRequest
+	(*ListCatalogResponse)(nil),    // 6: marketplace.catalog.v1.ListCatalogResponse
+	(*UpdateCatalogRequest)(nil),   // 7: marketplace.catalog.v1.UpdateCatalogRequest
+	(*UpdateCatalogResponse)(nil),  // 8: marketplace.catalog.v1.UpdateCatalogResponse
+	(*DeleteCatalogRequest)(nil),   // 9: marketplace.catalog.v1.DeleteCatalogRequest
+	(*DeleteCatalogResponse)(nil),  // 10: marketplace.catalog.v1.DeleteCatalogResponse
+	(*ReserveCatalogRequest)(nil),  // 11: marketplace.catalog.v1.ReserveCatalogRequest
+	(*ReserveCatalogResponse)(nil), // 12: marketplace.catalog.v1.ReserveCatalogResponse
 	(*timestamppb.Timestamp)(nil),  // 13: google.protobuf.Timestamp
 	(*emptypb.Empty)(nil),          // 14: google.protobuf.Empty
 }
 var file_marketplace_catalog_v1_catalog_proto_depIdxs = []int32{
-	13, // 0: proto.catalog.v1.Listing.created_at:type_name -> google.protobuf.Timestamp
-	0,  // 1: proto.catalog.v1.CreateCatalogResponse.listing:type_name -> proto.catalog.v1.Listing
-	0,  // 2: proto.catalog.v1.GetCatalogResponse.listing:type_name -> proto.catalog.v1.Listing
-	0,  // 3: proto.catalog.v1.ListCatalogResponse.items:type_name -> proto.catalog.v1.Listing
-	0,  // 4: proto.catalog.v1.UpdateCatalogResponse.listing:type_name -> proto.catalog.v1.Listing
-	1,  // 5: proto.catalog.v1.CatalogService.Create:input_type -> proto.catalog.v1.CreateCatalogRequest
-	3,  // 6: proto.catalog.v1.CatalogService.Get:input_type -> proto.catalog.v1.GetCatalogRequest
-	5,  // 7: proto.catalog.v1.CatalogService.List:input_type -> proto.catalog.v1.ListCatalogRequest
-	7,  // 8: proto.catalog.v1.CatalogService.Update:input_type -> proto.catalog.v1.UpdateCatalogRequest
-	9,  // 9: proto.catalog.v1.CatalogService.Delete:input_type -> proto.catalog.v1.DeleteCatalogRequest
-	11, // 10: proto.catalog.v1.CatalogService.Reserve:input_type -> proto.catalog.v1.ReserveCatalogRequest
-	2,  // 11: proto.catalog.v1.CatalogService.Create:output_type -> proto.catalog.v1.CreateCatalogResponse
-	4,  // 12: proto.catalog.v1.CatalogService.Get:output_type -> proto.catalog.v1.GetCatalogResponse
-	6,  // 13: proto.catalog.v1.CatalogService.List:output_type -> proto.catalog.v1.ListCatalogResponse
-	8,  // 14: proto.catalog.v1.CatalogService.Update:output_type -> proto.catalog.v1.UpdateCatalogResponse
-	14, // 15: proto.catalog.v1.CatalogService.Delete:output_type -> google.protobuf.Empty
-	12, // 16: proto.catalog.v1.CatalogService.Reserve:output_type -> proto.catalog.v1.ReserveCatalogResponse
+	13, // 0: marketplace.catalog.v1.Listing.created_at:type_name -> google.protobuf.Timestamp
+	0,  // 1: marketplace.catalog.v1.CreateCatalogResponse.listing:type_name -> marketplace.catalog.v1.Listing
+	0,  // 2: marketplace.catalog.v1.GetCatalogResponse.listing:type_name -> marketplace.catalog.v1.Listing
+	0,  // 3: marketplace.catalog.v1.ListCatalogResponse.items:type_name -> marketplace.catalog.v1.Listing
+	0,  // 4: marketplace.catalog.v1.UpdateCatalogResponse.listing:type_name -> marketplace.catalog.v1.Listing
+	1,  // 5: marketplace.catalog.v1.CatalogService.Create:input_type -> marketplace.catalog.v1.CreateCatalogRequest
+	3,  // 6: marketplace.catalog.v1.CatalogService.Get:input_type -> marketplace.catalog.v1.GetCatalogRequest
+	5,  // 7: marketplace.catalog.v1.CatalogService.List:input_type -> marketplace.catalog.v1.ListCatalogRequest
+	7,  // 8: marketplace.catalog.v1.CatalogService.Update:input_type -> marketplace.catalog.v1.UpdateCatalogRequest
+	9,  // 9: marketplace.catalog.v1.CatalogService.Delete:input_type -> marketplace.catalog.v1.DeleteCatalogRequest
+	11, // 10: marketplace.catalog.v1.CatalogService.Reserve:input_type -> marketplace.catalog.v1.ReserveCatalogRequest
+	2,  // 11: marketplace.catalog.v1.CatalogService.Create:output_type -> marketplace.catalog.v1.CreateCatalogResponse
+	4,  // 12: marketplace.catalog.v1.CatalogService.Get:output_type -> marketplace.catalog.v1.GetCatalogResponse
+	6,  // 13: marketplace.catalog.v1.CatalogService.List:output_type -> marketplace.catalog.v1.ListCatalogResponse
+	8,  // 14: marketplace.catalog.v1.CatalogService.Update:output_type -> marketplace.catalog.v1.UpdateCatalogResponse
+	14, // 15: marketplace.catalog.v1.CatalogService.Delete:output_type -> google.protobuf.Empty
+	12, // 16: marketplace.catalog.v1.CatalogService.Reserve:output_type -> marketplace.catalog.v1.ReserveCatalogResponse
 	11, // [11:17] is the sub-list for method output_type
 	5,  // [5:11] is the sub-list for method input_type
 	5,  // [5:5] is the sub-list for extension type_name

@@ -28,7 +28,7 @@ type headerStream struct {
 	headers metadata.MD
 }
 
-func (s *headerStream) Method() string { return "/proto.catalog.v1.CatalogService/Get" }
+func (s *headerStream) Method() string { return catalogpb.CatalogService_Get_FullMethodName }
 func (s *headerStream) SetHeader(md metadata.MD) error {
 	s.headers = metadata.Join(s.headers, md)
 	return nil

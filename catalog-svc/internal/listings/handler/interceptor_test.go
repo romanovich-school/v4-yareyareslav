@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"marketplace/gen/catalogpb"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -57,7 +58,7 @@ func TestLoggingInterceptor(t *testing.T) {
 				}
 				request := &struct{ Value string }{Value: "request"}
 				response := &struct{ Value string }{Value: "response"}
-				method := "/proto.catalog.v1.CatalogService/Create"
+				method := catalogpb.CatalogService_Create_FullMethodName
 				calls := 0
 				handler := func(receivedCtx context.Context, receivedRequest any) (any, error) {
 					calls++
