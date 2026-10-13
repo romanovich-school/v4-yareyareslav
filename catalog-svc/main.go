@@ -107,7 +107,17 @@ func run(ctx context.Context, errChan chan error) (runErr error) {
 		MinBytes:       1,
 		MaxBytes:       10 * 1024 * 1024,
 	})
-	consumer := kfk.NewConsumer(reader, listingsService)
+	dlqWriter := &kafka.Writer{
+		Addr:                   kafka.TCP(cfg.Kafka.Brokers...),
+		Balancer:               &kafka.Hash{},
+		RequiredAcks:           kafka.RequireAll,
+		Async:                  false,
+		BatchSize:              1,
+		ReadTimeout:            2 * time.Second,
+		WriteTimeout:           2 * time.Second,
+		AllowAutoTopicCreation: true,
+	}
+	consumer := kfk.NewConsumer(reader, dlqWriter, listingsService)
 	consumerCtx, cancelConsumer := context.WithCancel(context.Background())
 	consumerDone := make(chan struct{})
 	go func() {
@@ -127,6 +137,11 @@ func run(ctx context.Context, errChan chan error) (runErr error) {
 		}
 		if err := reader.Close(); err != nil {
 			runErr = errors.Join(runErr, fmt.Errorf("close Kafka reader: %w", err))
+		}
+		if workerStopped {
+			if err := dlqWriter.Close(); err != nil {
+				runErr = errors.Join(runErr, fmt.Errorf("close Kafka DLQ writer: %w", err))
+			}
 		}
 	}()
 
