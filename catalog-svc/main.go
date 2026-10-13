@@ -5,12 +5,15 @@ import (
 	"embed"
 	"fmt"
 	"log"
+	"log/slog"
 	"marketplace/catalog-svc/config"
 	"marketplace/catalog-svc/internal/listings/repository"
 	"marketplace/catalog-svc/internal/listings/service"
+	"marketplace/catalog-svc/internal/listings/service/adapter"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
@@ -56,15 +59,29 @@ func run(ctx context.Context, errChan chan error) error {
 	}
 
 	// REDIS
-	_ = redis.NewClient(&redis.Options{
-		Addr:     "localhost:" + cfg.Cache.URL,
-		Password: cfg.Cache.Password,
-		DB:       0,
-	})
+	parsedRedisUrl, err := redis.ParseURL(cfg.Cache.URL)
+	if err != nil {
+		return fmt.Errorf("redis url parse: %w", err)
+	}
+	parsedRedisUrl.MaxRetries = -1
+	parsedRedisUrl.DialerRetries = 1
+	parsedRedisUrl.ContextTimeoutEnabled = true
+	parsedRedisUrl.DialTimeout = 200 * time.Millisecond
+	parsedRedisUrl.ReadTimeout = 200 * time.Millisecond
+	parsedRedisUrl.WriteTimeout = 200 * time.Millisecond
+	parsedRedisUrl.PoolTimeout = 200 * time.Millisecond
+
+	rdb := redis.NewClient(parsedRedisUrl)
+	defer rdb.Close()
+	if err := rdb.Ping(ctx).Err(); err != nil {
+		slog.WarnContext(ctx, "Error starting redis")
+	}
+
+	adaptedRdb := adapter.NewRedisAdapter(rdb)
 
 	// SERVICE
 	listingsPGRepository := repository.NewPGRepository(pool)
-	_ = service.NewCatalogService(listingsPGRepository)
+	_ = service.NewCatalogService(listingsPGRepository, adaptedRdb)
 
 	return nil
 }

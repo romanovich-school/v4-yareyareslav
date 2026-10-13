@@ -2,12 +2,18 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"log/slog"
+	"marketplace/catalog-svc/internal/cache"
 	"marketplace/catalog-svc/internal/listings/dto"
 	"marketplace/catalog-svc/internal/listings/mapper"
 	"marketplace/catalog-svc/internal/listings/model"
 	"marketplace/catalog-svc/internal/listings/repository"
+	"time"
 )
+
+var listingCache = "listing:"
 
 type Repository interface {
 	Create(context.Context, model.Listing) (*model.Listing, error)
@@ -19,13 +25,21 @@ type Repository interface {
 	ApplyOrderCreated(context.Context, string, string, int64) (bool, error)
 }
 
-type CatalogService struct {
-	repository Repository
+type CatalogCache interface {
+	Get(ctx context.Context, key string) (*model.Listing, error)
+	Set(ctx context.Context, key string, value model.Listing, ttl time.Duration) error
+	Delete(ctx context.Context, keys ...string) (bool, error)
 }
 
-func NewCatalogService(repository Repository) *CatalogService {
+type CatalogService struct {
+	repository Repository
+	cache      CatalogCache
+}
+
+func NewCatalogService(repository Repository, cache CatalogCache) *CatalogService {
 	return &CatalogService{
 		repository: repository,
+		cache:      cache,
 	}
 }
 
@@ -55,9 +69,26 @@ func (s *CatalogService) Create(
 func (s *CatalogService) Get(
 	ctx context.Context,
 	id string,
-) (*dto.ListingResponse, error) {
+) (*dto.GetListingResponse, error) {
 	if !isValidUUID(id) {
 		return nil, fmt.Errorf("service get: %w", repository.ErrNotFound)
+	}
+
+	getCacheCtx, cancel := context.WithTimeout(ctx, time.Millisecond*200)
+	defer cancel()
+	val, cacheErr := s.cache.Get(getCacheCtx, listingCache+id)
+
+	if cacheErr == nil {
+		return &dto.GetListingResponse{
+			Listing: mapper.ToListingResponse(*val),
+			Cache:   "HIT",
+		}, nil
+	}
+
+	cacheStatus := "MISS"
+	if !errors.Is(cacheErr, cache.ErrCacheMiss) {
+		cacheStatus = "BYPASS"
+		slog.WarnContext(ctx, "cache get failed", "error", cacheErr)
 	}
 
 	listing, err := s.repository.Get(ctx, id)
@@ -65,8 +96,21 @@ func (s *CatalogService) Get(
 		return nil, fmt.Errorf("service get: %w", err)
 	}
 
-	response := mapper.ToListingResponse(*listing)
-	return &response, nil
+	if cacheStatus == "MISS" {
+		setCacheCtx, cancelSet := context.WithTimeout(ctx, time.Millisecond*200)
+		err = s.cache.Set(setCacheCtx, listingCache+id, *listing, time.Second*30)
+		cancelSet()
+
+		if err != nil {
+			cacheStatus = "BYPASS"
+			slog.WarnContext(ctx, "cache set failed", "error", err)
+		}
+	}
+
+	return &dto.GetListingResponse{
+		Listing: mapper.ToListingResponse(*listing),
+		Cache:   cacheStatus,
+	}, nil
 }
 
 func (s *CatalogService) List(
@@ -74,6 +118,10 @@ func (s *CatalogService) List(
 	limit,
 	offset int,
 ) (*dto.ListResponse, error) {
+	if err := validateList(limit, offset); err != nil {
+		return nil, fmt.Errorf("service list: %w", err)
+	}
+
 	listings, total, err := s.repository.List(ctx, limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("service list: %w", err)
@@ -115,6 +163,8 @@ func (s *CatalogService) Update(
 		return nil, fmt.Errorf("service update: %w", err)
 	}
 
+	s.invalidateCache(ctx, request.ID)
+
 	response := mapper.ToListingResponse(*updated)
 	return &response, nil
 }
@@ -132,6 +182,8 @@ func (s *CatalogService) Reserve(
 		return nil, fmt.Errorf("service reserve: %w", err)
 	}
 
+	s.invalidateCache(ctx, request.ListingID)
+
 	return &dto.ReserveListingResponse{Remaining: remaining}, nil
 }
 
@@ -148,6 +200,8 @@ func (s *CatalogService) ApplyOrderCreated(
 		return false, fmt.Errorf("service apply order created: %w", err)
 	}
 
+	s.invalidateCache(ctx, event.ListingID)
+
 	return applied, nil
 }
 
@@ -156,9 +210,30 @@ func (s *CatalogService) Delete(
 	id,
 	sellerID string,
 ) error {
+	if !isValidUUID(id) {
+		return fmt.Errorf("service delete: %w", repository.ErrNotFound)
+	}
+	if !isValidUUID(sellerID) {
+		return fmt.Errorf("service delete: %w", &ValidationError{
+			Fields: []FieldError{{Field: "seller_id", Message: "must be a valid UUID"}},
+		})
+	}
+
 	if err := s.repository.Delete(ctx, id, sellerID); err != nil {
 		return fmt.Errorf("service delete: %w", err)
 	}
 
+	s.invalidateCache(ctx, id)
+
 	return nil
+}
+
+func (s *CatalogService) invalidateCache(ctx context.Context, key string) {
+	deleteCtx, cancel := context.WithTimeout(ctx, time.Millisecond*200)
+	defer cancel()
+
+	_, err := s.cache.Delete(deleteCtx, listingCache+key)
+	if err != nil {
+		slog.WarnContext(ctx, "cache invalidation on update", "error", err)
+	}
 }

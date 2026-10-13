@@ -38,6 +38,20 @@ func isValidUUID(value string) bool {
 	return err == nil
 }
 
+func validateList(limit, offset int) error {
+	var fields []FieldError
+	if limit < 1 || limit > 100 {
+		fields = append(fields, FieldError{Field: "limit", Message: "must be between 1 and 100"})
+	}
+	if offset < 0 {
+		fields = append(fields, FieldError{Field: "offset", Message: "must be non-negative"})
+	}
+	if len(fields) > 0 {
+		return &ValidationError{Fields: fields}
+	}
+	return nil
+}
+
 func validateCreate(request dto.CreateListingRequest) error {
 	var fields []FieldError
 	if !isValidUUID(request.SellerID) {
