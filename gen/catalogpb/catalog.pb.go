@@ -29,8 +29,8 @@ type Listing struct {
 	SellerId      string                 `protobuf:"bytes,2,opt,name=seller_id,json=sellerId,proto3" json:"seller_id,omitempty"`
 	Title         string                 `protobuf:"bytes,3,opt,name=title,proto3" json:"title,omitempty"`
 	Price         int64                  `protobuf:"varint,4,opt,name=price,proto3" json:"price,omitempty"`
-	Stock         int32                  `protobuf:"varint,5,opt,name=stock,proto3" json:"stock,omitempty"`
-	Sold          int32                  `protobuf:"varint,6,opt,name=sold,proto3" json:"sold,omitempty"`
+	Stock         int64                  `protobuf:"varint,5,opt,name=stock,proto3" json:"stock,omitempty"`
+	Sold          int64                  `protobuf:"varint,6,opt,name=sold,proto3" json:"sold,omitempty"`
 	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -94,14 +94,14 @@ func (x *Listing) GetPrice() int64 {
 	return 0
 }
 
-func (x *Listing) GetStock() int32 {
+func (x *Listing) GetStock() int64 {
 	if x != nil {
 		return x.Stock
 	}
 	return 0
 }
 
-func (x *Listing) GetSold() int32 {
+func (x *Listing) GetSold() int64 {
 	if x != nil {
 		return x.Sold
 	}
@@ -120,7 +120,7 @@ type CreateCatalogRequest struct {
 	SellerId      string                 `protobuf:"bytes,1,opt,name=seller_id,json=sellerId,proto3" json:"seller_id,omitempty"`
 	Title         string                 `protobuf:"bytes,2,opt,name=title,proto3" json:"title,omitempty"`
 	Price         int64                  `protobuf:"varint,3,opt,name=price,proto3" json:"price,omitempty"`
-	Stock         *int32                 `protobuf:"varint,4,opt,name=stock,proto3,oneof" json:"stock,omitempty"`
+	Stock         *int64                 `protobuf:"varint,4,opt,name=stock,proto3,oneof" json:"stock,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -176,7 +176,7 @@ func (x *CreateCatalogRequest) GetPrice() int64 {
 	return 0
 }
 
-func (x *CreateCatalogRequest) GetStock() int32 {
+func (x *CreateCatalogRequest) GetStock() int64 {
 	if x != nil && x.Stock != nil {
 		return *x.Stock
 	}
@@ -317,8 +317,8 @@ func (x *GetCatalogResponse) GetListing() *Listing {
 
 type ListCatalogRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Limit         *int32                 `protobuf:"varint,1,opt,name=limit,proto3,oneof" json:"limit,omitempty"`
-	Offset        *int32                 `protobuf:"varint,2,opt,name=offset,proto3,oneof" json:"offset,omitempty"`
+	Limit         *int64                 `protobuf:"varint,1,opt,name=limit,proto3,oneof" json:"limit,omitempty"`
+	Offset        *int64                 `protobuf:"varint,2,opt,name=offset,proto3,oneof" json:"offset,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -353,14 +353,14 @@ func (*ListCatalogRequest) Descriptor() ([]byte, []int) {
 	return file_marketplace_catalog_v1_catalog_proto_rawDescGZIP(), []int{5}
 }
 
-func (x *ListCatalogRequest) GetLimit() int32 {
+func (x *ListCatalogRequest) GetLimit() int64 {
 	if x != nil && x.Limit != nil {
 		return *x.Limit
 	}
 	return 0
 }
 
-func (x *ListCatalogRequest) GetOffset() int32 {
+func (x *ListCatalogRequest) GetOffset() int64 {
 	if x != nil && x.Offset != nil {
 		return *x.Offset
 	}
@@ -425,7 +425,7 @@ type UpdateCatalogRequest struct {
 	SellerId      string                 `protobuf:"bytes,2,opt,name=seller_id,json=sellerId,proto3" json:"seller_id,omitempty"`
 	Title         *string                `protobuf:"bytes,3,opt,name=title,proto3,oneof" json:"title,omitempty"`
 	Price         *int64                 `protobuf:"varint,4,opt,name=price,proto3,oneof" json:"price,omitempty"`
-	Stock         *int32                 `protobuf:"varint,5,opt,name=stock,proto3,oneof" json:"stock,omitempty"`
+	Stock         *int64                 `protobuf:"varint,5,opt,name=stock,proto3,oneof" json:"stock,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -488,7 +488,7 @@ func (x *UpdateCatalogRequest) GetPrice() int64 {
 	return 0
 }
 
-func (x *UpdateCatalogRequest) GetStock() int32 {
+func (x *UpdateCatalogRequest) GetStock() int64 {
 	if x != nil && x.Stock != nil {
 		return *x.Stock
 	}
@@ -630,7 +630,7 @@ func (*DeleteCatalogResponse) Descriptor() ([]byte, []int) {
 type ReserveCatalogRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ListingId     string                 `protobuf:"bytes,1,opt,name=listing_id,json=listingId,proto3" json:"listing_id,omitempty"`
-	Qty           int32                  `protobuf:"varint,2,opt,name=qty,proto3" json:"qty,omitempty"`
+	Qty           int64                  `protobuf:"varint,2,opt,name=qty,proto3" json:"qty,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -672,7 +672,7 @@ func (x *ReserveCatalogRequest) GetListingId() string {
 	return ""
 }
 
-func (x *ReserveCatalogRequest) GetQty() int32 {
+func (x *ReserveCatalogRequest) GetQty() int64 {
 	if x != nil {
 		return x.Qty
 	}
@@ -681,7 +681,7 @@ func (x *ReserveCatalogRequest) GetQty() int32 {
 
 type ReserveCatalogResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Remaining     int32                  `protobuf:"varint,1,opt,name=remaining,proto3" json:"remaining,omitempty"`
+	Remaining     int64                  `protobuf:"varint,1,opt,name=remaining,proto3" json:"remaining,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -716,7 +716,7 @@ func (*ReserveCatalogResponse) Descriptor() ([]byte, []int) {
 	return file_marketplace_catalog_v1_catalog_proto_rawDescGZIP(), []int{12}
 }
 
-func (x *ReserveCatalogResponse) GetRemaining() int32 {
+func (x *ReserveCatalogResponse) GetRemaining() int64 {
 	if x != nil {
 		return x.Remaining
 	}
@@ -733,15 +733,15 @@ const file_marketplace_catalog_v1_catalog_proto_rawDesc = "" +
 	"\tseller_id\x18\x02 \x01(\tR\bsellerId\x12\x14\n" +
 	"\x05title\x18\x03 \x01(\tR\x05title\x12\x14\n" +
 	"\x05price\x18\x04 \x01(\x03R\x05price\x12\x14\n" +
-	"\x05stock\x18\x05 \x01(\x05R\x05stock\x12\x12\n" +
-	"\x04sold\x18\x06 \x01(\x05R\x04sold\x129\n" +
+	"\x05stock\x18\x05 \x01(\x03R\x05stock\x12\x12\n" +
+	"\x04sold\x18\x06 \x01(\x03R\x04sold\x129\n" +
 	"\n" +
 	"created_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"\x84\x01\n" +
 	"\x14CreateCatalogRequest\x12\x1b\n" +
 	"\tseller_id\x18\x01 \x01(\tR\bsellerId\x12\x14\n" +
 	"\x05title\x18\x02 \x01(\tR\x05title\x12\x14\n" +
 	"\x05price\x18\x03 \x01(\x03R\x05price\x12\x19\n" +
-	"\x05stock\x18\x04 \x01(\x05H\x00R\x05stock\x88\x01\x01B\b\n" +
+	"\x05stock\x18\x04 \x01(\x03H\x00R\x05stock\x88\x01\x01B\b\n" +
 	"\x06_stock\"L\n" +
 	"\x15CreateCatalogResponse\x123\n" +
 	"\alisting\x18\x01 \x01(\v2\x19.proto.catalog.v1.ListingR\alisting\"#\n" +
@@ -750,8 +750,8 @@ const file_marketplace_catalog_v1_catalog_proto_rawDesc = "" +
 	"\x12GetCatalogResponse\x123\n" +
 	"\alisting\x18\x01 \x01(\v2\x19.proto.catalog.v1.ListingR\alisting\"a\n" +
 	"\x12ListCatalogRequest\x12\x19\n" +
-	"\x05limit\x18\x01 \x01(\x05H\x00R\x05limit\x88\x01\x01\x12\x1b\n" +
-	"\x06offset\x18\x02 \x01(\x05H\x01R\x06offset\x88\x01\x01B\b\n" +
+	"\x05limit\x18\x01 \x01(\x03H\x00R\x05limit\x88\x01\x01\x12\x1b\n" +
+	"\x06offset\x18\x02 \x01(\x03H\x01R\x06offset\x88\x01\x01B\b\n" +
 	"\x06_limitB\t\n" +
 	"\a_offset\"\\\n" +
 	"\x13ListCatalogResponse\x12/\n" +
@@ -762,7 +762,7 @@ const file_marketplace_catalog_v1_catalog_proto_rawDesc = "" +
 	"\tseller_id\x18\x02 \x01(\tR\bsellerId\x12\x19\n" +
 	"\x05title\x18\x03 \x01(\tH\x00R\x05title\x88\x01\x01\x12\x19\n" +
 	"\x05price\x18\x04 \x01(\x03H\x01R\x05price\x88\x01\x01\x12\x19\n" +
-	"\x05stock\x18\x05 \x01(\x05H\x02R\x05stock\x88\x01\x01B\b\n" +
+	"\x05stock\x18\x05 \x01(\x03H\x02R\x05stock\x88\x01\x01B\b\n" +
 	"\x06_titleB\b\n" +
 	"\x06_priceB\b\n" +
 	"\x06_stock\"L\n" +
@@ -775,9 +775,9 @@ const file_marketplace_catalog_v1_catalog_proto_rawDesc = "" +
 	"\x15ReserveCatalogRequest\x12\x1d\n" +
 	"\n" +
 	"listing_id\x18\x01 \x01(\tR\tlistingId\x12\x10\n" +
-	"\x03qty\x18\x02 \x01(\x05R\x03qty\"6\n" +
+	"\x03qty\x18\x02 \x01(\x03R\x03qty\"6\n" +
 	"\x16ReserveCatalogResponse\x12\x1c\n" +
-	"\tremaining\x18\x01 \x01(\x05R\tremaining2\x95\x04\n" +
+	"\tremaining\x18\x01 \x01(\x03R\tremaining2\x95\x04\n" +
 	"\x0eCatalogService\x12Y\n" +
 	"\x06Create\x12&.proto.catalog.v1.CreateCatalogRequest\x1a'.proto.catalog.v1.CreateCatalogResponse\x12P\n" +
 	"\x03Get\x12#.proto.catalog.v1.GetCatalogRequest\x1a$.proto.catalog.v1.GetCatalogResponse\x12S\n" +
