@@ -82,7 +82,11 @@ func run(ctx context.Context, errChan chan error) (runErr error) {
 	parsedRedisUrl.PoolTimeout = 200 * time.Millisecond
 
 	rdb := redis.NewClient(parsedRedisUrl)
-	defer rdb.Close()
+	defer func() {
+		if workerStopped {
+			rdb.Close()
+		}
+	}()
 
 	pingCtx, cancelPing := context.WithTimeout(ctx, time.Millisecond*200)
 	if err := rdb.Ping(pingCtx).Err(); err != nil {
@@ -126,22 +130,13 @@ func run(ctx context.Context, errChan chan error) (runErr error) {
 	}()
 	defer func() {
 		cancelConsumer()
-		consumerTimer := time.NewTimer(10 * time.Second)
-		defer consumerTimer.Stop()
-		select {
-		case <-consumerDone:
-		case <-consumerTimer.C:
-			workerStopped = false
-			slog.Error("Kafka consumer shutdown timed out")
-			runErr = errors.Join(runErr, errors.New("Kafka consumer shutdown timed out"))
-		}
-		if err := reader.Close(); err != nil {
-			runErr = errors.Join(runErr, fmt.Errorf("close Kafka reader: %w", err))
-		}
-		if workerStopped {
-			if err := dlqWriter.Close(); err != nil {
-				runErr = errors.Join(runErr, fmt.Errorf("close Kafka DLQ writer: %w", err))
-			}
+		stopCtx, cancelStop := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancelStop()
+		var err error
+		workerStopped, err = stopConsumer(stopCtx, consumerDone, reader, dlqWriter)
+		if err != nil {
+			slog.Error("Kafka consumer shutdown failed", "error", err)
+			runErr = errors.Join(runErr, fmt.Errorf("stop Kafka consumer: %w", err))
 		}
 	}()
 
