@@ -41,7 +41,7 @@ func TestGetCacheMetadata(t *testing.T) {
 		t.Run(cacheStatus, func(t *testing.T) {
 			listing := dto.ListingResponse{
 				ID: "listing-id", SellerID: "seller-id", Title: "listing",
-				Price: 100, Stock: 5, Sold: 2, CreatedAt: "2026-10-13T12:00:00.123456789+03:00",
+				Price: 100, Stock: 1 << 40, Sold: 1 << 41, CreatedAt: "2026-10-13T12:00:00.123456789+03:00",
 			}
 			stream := &headerStream{}
 			ctx := grpc.NewContextWithServerTransportStream(context.Background(), stream)
@@ -61,7 +61,7 @@ func TestGetCacheMetadata(t *testing.T) {
 				t.Fatal(err)
 			}
 			if got.Id != listing.ID || got.SellerId != listing.SellerID || got.Title != listing.Title ||
-				got.Price != listing.Price || got.Stock != listing.Stock || got.Sold != int32(listing.Sold) ||
+				got.Price != listing.Price || got.Stock != listing.Stock || got.Sold != listing.Sold ||
 				!got.CreatedAt.AsTime().Equal(wantTime) {
 				t.Fatalf("unexpected listing: %v", got)
 			}

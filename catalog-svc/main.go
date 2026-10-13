@@ -83,15 +83,19 @@ func run(ctx context.Context, errChan chan error) (runErr error) {
 
 	rdb := redis.NewClient(parsedRedisUrl)
 	defer rdb.Close()
-	if err := rdb.Ping(ctx).Err(); err != nil {
-		slog.WarnContext(ctx, "Error starting redis")
-	}
 
-	adaptedRdb := adapter.NewRedisAdapter(rdb)
+	pingCtx, cancelPing := context.WithTimeout(ctx, time.Millisecond*200)
+	if err := rdb.Ping(pingCtx).Err(); err != nil {
+		slog.WarnContext(ctx, "Error starting redis", "error", err.Error())
+	}
+	cancelPing()
 
 	// SERVICE
 	listingsPGRepository := repository.NewPGRepository(pool)
+
+	adaptedRdb := adapter.NewRedisAdapter(rdb)
 	listingsService := service.NewCatalogService(listingsPGRepository, adaptedRdb)
+
 	listingsGRPCHandler := handler.NewGRPCHandler(listingsService)
 
 	reader := kafka.NewReader(kafka.ReaderConfig{

@@ -3,7 +3,6 @@ package service
 import (
 	"errors"
 	"marketplace/catalog-svc/internal/listings/dto"
-	"math"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -65,8 +64,8 @@ func validateCreate(request dto.CreateListingRequest) error {
 	}
 	if request.Stock == nil {
 		fields = append(fields, FieldError{Field: "stock", Message: "is required"})
-	} else if *request.Stock < 0 || *request.Stock > math.MaxInt32 {
-		fields = append(fields, FieldError{Field: "stock", Message: "must be between 0 and 2147483647"})
+	} else if *request.Stock < 0 {
+		fields = append(fields, FieldError{Field: "stock", Message: "must be non-negative"})
 	}
 	if len(fields) > 0 {
 		return &ValidationError{Fields: fields}
@@ -79,8 +78,8 @@ func validateReserve(request dto.ReserveListingRequest) error {
 	if !isValidUUID(request.ListingID) {
 		fields = append(fields, FieldError{Field: "listing_id", Message: "must be a valid UUID"})
 	}
-	if request.Qty <= 0 || request.Qty > math.MaxInt32 {
-		fields = append(fields, FieldError{Field: "qty", Message: "must be between 1 and 2147483647"})
+	if request.Qty <= 0 {
+		fields = append(fields, FieldError{Field: "qty", Message: "must be positive"})
 	}
 	if len(fields) > 0 {
 		return &ValidationError{Fields: fields}
@@ -103,8 +102,8 @@ func validateOrderCreated(event dto.OrderCreatedEvent) error {
 			fields = append(fields, FieldError{Field: field.name, Message: "must be a valid UUID"})
 		}
 	}
-	if event.Qty <= 0 || event.Qty > math.MaxInt32 {
-		fields = append(fields, FieldError{Field: "qty", Message: "must be between 1 and 2147483647"})
+	if event.Qty <= 0 {
+		fields = append(fields, FieldError{Field: "qty", Message: "must be positive"})
 	}
 	if _, err := time.Parse(time.RFC3339Nano, event.CreatedAt); err != nil {
 		fields = append(fields, FieldError{Field: "created_at", Message: "must be a valid RFC3339 timestamp"})
@@ -126,8 +125,8 @@ func validateUpdate(request dto.UpdateListingRequest) error {
 	if request.Price != nil && *request.Price <= 0 {
 		fields = append(fields, FieldError{Field: "price", Message: "must be positive"})
 	}
-	if request.Stock != nil && (*request.Stock < 0 || *request.Stock > math.MaxInt32) {
-		fields = append(fields, FieldError{Field: "stock", Message: "must be between 0 and 2147483647"})
+	if request.Stock != nil && *request.Stock < 0 {
+		fields = append(fields, FieldError{Field: "stock", Message: "must be non-negative"})
 	}
 	if len(fields) > 0 {
 		return &ValidationError{Fields: fields}

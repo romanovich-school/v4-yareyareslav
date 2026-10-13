@@ -152,14 +152,14 @@ func (h *GRPCHandler) Reserve(
 ) (*catalogpb.ReserveCatalogResponse, error) {
 	result, err := h.service.Reserve(ctx, dto.ReserveListingRequest{
 		ListingID: req.GetListingId(),
-		Qty:       int64(req.GetQty()),
+		Qty:       req.GetQty(),
 	})
 	if err != nil {
 		return nil, toGRPCError(err)
 	}
 
 	return &catalogpb.ReserveCatalogResponse{
-		Remaining: int32(result.Remaining),
+		Remaining: result.Remaining,
 	}, nil
 }
 
@@ -179,7 +179,7 @@ func toProtoListing(listing dto.ListingResponse) (*catalogpb.Listing, error) {
 		Title:     listing.Title,
 		Price:     listing.Price,
 		Stock:     listing.Stock,
-		Sold:      int32(listing.Sold),
+		Sold:      listing.Sold,
 		CreatedAt: createdAtTimestamp,
 	}, nil
 }

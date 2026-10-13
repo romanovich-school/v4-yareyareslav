@@ -11,7 +11,7 @@ func ToListingResponse(listing model.Listing) dto.ListingResponse {
 		SellerID:  listing.SellerID,
 		Title:     listing.Title,
 		Price:     listing.Price,
-		Stock:     int32(listing.Stock),
+		Stock:     listing.Stock,
 		Sold:      listing.Sold,
 		CreatedAt: listing.CreatedAt,
 	}

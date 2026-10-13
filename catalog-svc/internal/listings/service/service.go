@@ -55,7 +55,7 @@ func (s *CatalogService) Create(
 		Title:    createDto.Title,
 		Price:    createDto.Price,
 		SellerID: createDto.SellerID,
-		Stock:    int64(*createDto.Stock),
+		Stock:    *createDto.Stock,
 	}
 	createdListing, err := s.repository.Create(ctx, listing)
 	if err != nil {
@@ -151,18 +151,12 @@ func (s *CatalogService) Update(
 		return nil, fmt.Errorf("service update: %w", err)
 	}
 
-	var stock *int64
-	if request.Stock != nil {
-		value := int64(*request.Stock)
-		stock = &value
-	}
-
 	listing := model.UpdateListing{
 		ID:       request.ID,
 		SellerID: request.SellerID,
 		Title:    request.Title,
 		Price:    request.Price,
-		Stock:    stock,
+		Stock:    request.Stock,
 	}
 	updated, err := s.repository.Update(ctx, listing)
 	if err != nil {

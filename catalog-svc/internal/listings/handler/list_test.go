@@ -22,8 +22,8 @@ func (s listServiceStub) List(ctx context.Context, limit, offset int) (*dto.List
 }
 
 func TestListPagination(t *testing.T) {
-	limit, offset := int32(5), int32(10)
-	zero := int32(0)
+	limit, offset := int64(5), int64(10)
+	zero := int64(0)
 	tests := []struct {
 		name          string
 		request       *catalogpb.ListCatalogRequest

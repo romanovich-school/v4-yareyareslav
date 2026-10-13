@@ -4,7 +4,7 @@ type CreateListingRequest struct {
 	SellerID string `json:"seller_id" validate:"required,uuid"`
 	Title    string `json:"title" validate:"required,max=200"`
 	Price    int64  `json:"price" validate:"gt=0"`
-	Stock    *int32 `json:"stock" validate:"required,gte=0,lte=2147483647"`
+	Stock    *int64 `json:"stock" validate:"required,gte=0"`
 }
 
 type GetListingRequest struct {
@@ -21,7 +21,7 @@ type UpdateListingRequest struct {
 	SellerID string  `json:"seller_id" validate:"required,uuid"`
 	Title    *string `json:"title,omitempty" validate:"omitempty,min=1,max=200"`
 	Price    *int64  `json:"price,omitempty" validate:"omitempty,gt=0"`
-	Stock    *int32  `json:"stock,omitempty" validate:"omitempty,gte=0,lte=2147483647"`
+	Stock    *int64  `json:"stock,omitempty" validate:"omitempty,gte=0"`
 }
 
 type DeleteListingRequest struct {
@@ -31,7 +31,7 @@ type DeleteListingRequest struct {
 
 type ReserveListingRequest struct {
 	ListingID string `json:"listing_id" validate:"required,uuid"`
-	Qty       int64  `json:"qty" validate:"gt=0,lte=2147483647"`
+	Qty       int64  `json:"qty" validate:"gt=0"`
 }
 
 type ListingResponse struct {
@@ -39,7 +39,7 @@ type ListingResponse struct {
 	SellerID  string `json:"seller_id"`
 	Title     string `json:"title"`
 	Price     int64  `json:"price"`
-	Stock     int32  `json:"stock"`
+	Stock     int64  `json:"stock"`
 	Sold      int64  `json:"sold"`
 	CreatedAt string `json:"created_at"`
 }
@@ -63,6 +63,6 @@ type OrderCreatedEvent struct {
 	OrderID   string `json:"order_id" validate:"required,uuid"`
 	BuyerID   string `json:"buyer_id" validate:"required,uuid"`
 	ListingID string `json:"listing_id" validate:"required,uuid"`
-	Qty       int64  `json:"qty" validate:"gt=0,lte=2147483647"`
+	Qty       int64  `json:"qty" validate:"gt=0"`
 	CreatedAt string `json:"created_at" validate:"required"`
 }
