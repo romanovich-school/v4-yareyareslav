@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"marketplace/catalog-svc/config"
 	"marketplace/catalog-svc/internal/listings/handler"
+	kfk "marketplace/catalog-svc/internal/listings/kafka"
 	"marketplace/catalog-svc/internal/listings/repository"
 	"marketplace/catalog-svc/internal/listings/service"
 	"marketplace/catalog-svc/internal/listings/service/adapter"
@@ -24,6 +25,7 @@ import (
 	"github.com/golang-migrate/migrate/v4/source/iofs"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
+	"github.com/segmentio/kafka-go"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
@@ -32,7 +34,7 @@ import (
 //go:embed migrations/*.sql
 var migrationFiles embed.FS
 
-func run(ctx context.Context, errChan chan error) error {
+func run(ctx context.Context, errChan chan error) (runErr error) {
 	workerStopped := true
 	cfg, err := config.Load()
 	if err != nil {
@@ -92,6 +94,38 @@ func run(ctx context.Context, errChan chan error) error {
 	listingsService := service.NewCatalogService(listingsPGRepository, adaptedRdb)
 	listingsGRPCHandler := handler.NewGRPCHandler(listingsService)
 
+	reader := kafka.NewReader(kafka.ReaderConfig{
+		Brokers:        cfg.Kafka.Brokers,
+		GroupID:        "catalog-svc",
+		Topic:          "order.created",
+		CommitInterval: 0,
+		StartOffset:    kafka.FirstOffset,
+		MinBytes:       1,
+		MaxBytes:       10 * 1024 * 1024,
+	})
+	consumer := kfk.NewConsumer(reader, listingsService)
+	consumerCtx, cancelConsumer := context.WithCancel(context.Background())
+	consumerDone := make(chan struct{})
+	go func() {
+		defer close(consumerDone)
+		consumer.Start(consumerCtx)
+	}()
+	defer func() {
+		cancelConsumer()
+		consumerTimer := time.NewTimer(10 * time.Second)
+		defer consumerTimer.Stop()
+		select {
+		case <-consumerDone:
+		case <-consumerTimer.C:
+			workerStopped = false
+			slog.Error("Kafka consumer shutdown timed out")
+			runErr = errors.Join(runErr, errors.New("Kafka consumer shutdown timed out"))
+		}
+		if err := reader.Close(); err != nil {
+			runErr = errors.Join(runErr, fmt.Errorf("close Kafka reader: %w", err))
+		}
+	}()
+
 	// GRPC
 	listener, err := net.Listen("tcp", cfg.GRPC.Addr)
 	if err != nil {
@@ -99,7 +133,7 @@ func run(ctx context.Context, errChan chan error) error {
 	}
 	defer listener.Close()
 
-	server := grpc.NewServer()
+	server := grpc.NewServer(grpc.UnaryInterceptor(handler.LoggingInterceptor))
 	catalogpb.RegisterCatalogServiceServer(server, listingsGRPCHandler)
 	log.Printf("gRPC server listening on %s", cfg.GRPC.Addr)
 
@@ -152,6 +186,7 @@ func run(ctx context.Context, errChan chan error) error {
 }
 
 func main() {
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
 	ctx, stop := signal.NotifyContext(
 		context.Background(),
 		syscall.SIGINT,
