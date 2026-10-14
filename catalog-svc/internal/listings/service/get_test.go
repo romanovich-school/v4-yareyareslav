@@ -27,6 +27,7 @@ func TestGetInvalidID(t *testing.T) {
 }
 
 func TestGetCacheScenarios(t *testing.T) {
+	type requestContextKey struct{}
 	failure := errors.New("Redis unavailable")
 	tests := []struct {
 		name                    string
@@ -43,7 +44,7 @@ func TestGetCacheScenarios(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ctx := context.WithValue(context.Background(), struct{}{}, "request")
+			ctx := context.WithValue(context.Background(), requestContextKey{}, "request")
 			listing := testListing()
 			var calls []string
 			var cacheContexts []context.Context
@@ -58,7 +59,7 @@ func TestGetCacheScenarios(t *testing.T) {
 				get: func(cacheCtx context.Context, key string) (*model.Listing, error) {
 					calls = append(calls, "cache get")
 					assertCacheContext(t, cacheCtx)
-					if key != "listing:"+testListingID || cacheCtx.Value(struct{}{}) != "request" {
+					if key != "listing:"+testListingID || cacheCtx.Value(requestContextKey{}) != "request" {
 						t.Fatal("unexpected cache get arguments")
 					}
 					cacheContexts = append(cacheContexts, cacheCtx)
