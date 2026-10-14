@@ -21,6 +21,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 )
 
 func connectToDB(databaseURL string) (*pgxpool.Pool, error) {
@@ -63,8 +64,6 @@ func main() {
 	jwtMiddleware := jwt.NewJWTMiddleware(jwtManager)
 	authConfig := config.NewAuthConfig(jwtMiddleware)
 
-	healthz.NewHealthzHandler(r)
-
 	authDBRepository := auth.NewAuthDBRepository(pool)
 	authService := auth.NewAuthService(authDBRepository, jwtManager)
 	auth.NewAuthHandler(r, validate, authService)
@@ -84,6 +83,7 @@ func main() {
 	defer ordersConn.Close()
 	ordersService := orders.NewOrdersService(orderspb.NewOrdersServiceClient(ordersConn))
 	orders.NewOrdersHandler(r, validate, authConfig, ordersService)
+	healthz.NewHealthzHandler(r, healthpb.NewHealthClient(catalogConn), healthpb.NewHealthClient(ordersConn))
 
 	server := http.Server{
 		Addr:    cfg.HTTP.Addr,
