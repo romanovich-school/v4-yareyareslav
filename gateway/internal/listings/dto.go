@@ -38,29 +38,29 @@ func (p *priceNumber) UnmarshalJSON(data []byte) error {
 func (r listingRequest) validate(create bool) (*int64, []fieldError) {
 	var fields []fieldError
 	if r.Title == nil && create {
-		fields = append(fields, fieldError{"title", "is required"})
+		fields = append(fields, fieldError{Field: "title", Message: "is required"})
 	} else if r.Title != nil && (strings.TrimSpace(*r.Title) == "" || utf8.RuneCountInString(*r.Title) > 200) {
-		fields = append(fields, fieldError{"title", "must be non-empty and at most 200 characters"})
+		fields = append(fields, fieldError{Field: "title", Message: "must be non-empty and at most 200 characters"})
 	}
 	var price *int64
 	if r.Price == nil && create {
-		fields = append(fields, fieldError{"price", "is required"})
+		fields = append(fields, fieldError{Field: "price", Message: "is required"})
 	} else if r.Price != nil {
 		value, ok := new(big.Rat).SetString(string(*r.Price))
 		if ok {
 			value.Mul(value, big.NewRat(100, 1))
 		}
 		if !ok || value.Sign() <= 0 || !value.IsInt() || !value.Num().IsInt64() {
-			fields = append(fields, fieldError{"price", "must be positive, fit int64 minor units and have at most two decimal places"})
+			fields = append(fields, fieldError{Field: "price", Message: "must be positive, fit int64 minor units and have at most two decimal places"})
 		} else {
 			minor := value.Num().Int64()
 			price = &minor
 		}
 	}
 	if r.Stock == nil && create {
-		fields = append(fields, fieldError{"stock", "is required"})
+		fields = append(fields, fieldError{Field: "stock", Message: "is required"})
 	} else if r.Stock != nil && *r.Stock < 0 {
-		fields = append(fields, fieldError{"stock", "must be non-negative"})
+		fields = append(fields, fieldError{Field: "stock", Message: "must be non-negative"})
 	}
 	return price, fields
 }

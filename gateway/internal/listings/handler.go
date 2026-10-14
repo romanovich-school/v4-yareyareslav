@@ -15,7 +15,7 @@ import (
 	"github.com/go-chi/chi"
 	"github.com/go-playground/validator"
 	"github.com/google/uuid"
-	"google.golang.org/genproto/googleapis/rpc/errdetails"
+
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
@@ -43,49 +43,16 @@ func NewListingsHandler(r chi.Router, _ *validator.Validate, ac config.AuthConfi
 	return h
 }
 
-type fieldError struct {
-	Field   string `json:"field"`
-	Message string `json:"message"`
-}
-type errorBody struct {
-	Error   string       `json:"error"`
-	Message string       `json:"message"`
-	Fields  []fieldError `json:"fields,omitempty"`
-}
+type fieldError = response.FieldError
+type errorBody = response.ErrorBody
 
 func writeJSON(w http.ResponseWriter, body any, code int) { _ = response.Body(w, body, code) }
 func validationError(w http.ResponseWriter, fields []fieldError) {
-	writeJSON(w, errorBody{"validation_failed", "request is invalid", fields}, http.StatusBadRequest)
+	response.ValidationError(w, fields)
 }
 func writeRPCError(w http.ResponseWriter, err error) {
-	code, name, message := http.StatusInternalServerError, "internal", "internal server error"
-	var fields []fieldError
-	st := status.Convert(err)
-	switch st.Code() {
-	case codes.NotFound:
-		code, name, message = 404, "not_found", "listing not found"
-	case codes.InvalidArgument:
-		code, name, message = 400, "validation_failed", "request is invalid"
-		for _, detail := range st.Details() {
-			if detail, ok := detail.(*errdetails.BadRequest); ok {
-				for _, field := range detail.FieldViolations {
-					fields = append(fields, fieldError{field.Field, field.Description})
-				}
-			}
-		}
-		if len(fields) == 0 {
-			fields = []fieldError{{"request", st.Message()}}
-		}
-	case codes.PermissionDenied:
-		code, name, message = 403, "forbidden", "listing belongs to another seller"
-	case codes.FailedPrecondition, codes.AlreadyExists, codes.Aborted:
-		code, name, message = 409, "conflict", "request conflicts with current state"
-	case codes.Unavailable, codes.DeadlineExceeded:
-		code, name, message = 503, "unavailable", "catalog is unavailable"
-	}
-	writeJSON(w, errorBody{name, message, fields}, code)
+	response.GRPCError(w, err)
 }
-
 func requestContext(r *http.Request) context.Context {
 	return metadata.AppendToOutgoingContext(r.Context(), "x-request-id", r.Header.Get("X-Request-ID"))
 }
@@ -101,12 +68,12 @@ func readBody(w http.ResponseWriter, r *http.Request) (listingRequest, bool) {
 	var request *listingRequest
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
 	if err := decoder.Decode(&request); err != nil || request == nil {
-		validationError(w, []fieldError{{"body", "must be a JSON object"}})
+		validationError(w, []fieldError{{Field: "body", Message: "must be a JSON object"}})
 		return listingRequest{}, false
 	}
 	var extra any
 	if err := decoder.Decode(&extra); err != io.EOF {
-		validationError(w, []fieldError{{"body", "must contain one JSON object"}})
+		validationError(w, []fieldError{{Field: "body", Message: "must contain one JSON object"}})
 		return listingRequest{}, false
 	}
 	return *request, true
@@ -122,7 +89,7 @@ func (h *ListingsHandler) GetAllListings(w http.ResponseWriter, r *http.Request)
 		if values, ok := r.URL.Query()[parameter.name]; ok {
 			value, err := strconv.ParseInt(values[0], 10, 64)
 			if err != nil || (parameter.name == "limit" && (value < 1 || value > 100)) || (parameter.name == "offset" && value < 0) {
-				fields = append(fields, fieldError{parameter.name, "is out of range or not an integer"})
+				fields = append(fields, fieldError{Field: parameter.name, Message: "is out of range or not an integer"})
 			} else {
 				*parameter.value = value
 			}

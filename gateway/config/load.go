@@ -24,11 +24,16 @@ type CatalogConfig struct {
 	Addr string
 }
 
+type OrdersConfig struct {
+	Addr string
+}
+
 type Config struct {
 	HTTP     HTTPConfig
 	Database DatabaseConfig
 	JWT      JWTConfig
 	Catalog  CatalogConfig
+	Orders   OrdersConfig
 }
 
 func Load() (*Config, error) {
@@ -48,6 +53,10 @@ func Load() (*Config, error) {
 	if catalogAddr == "" {
 		return nil, fmt.Errorf("CATALOG_GRPC_ADDR is required")
 	}
+	ordersAddr := os.Getenv("ORDERS_GRPC_ADDR")
+	if ordersAddr == "" {
+		return nil, fmt.Errorf("ORDERS_GRPC_ADDR is required")
+	}
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
@@ -58,5 +67,6 @@ func Load() (*Config, error) {
 		Database: DatabaseConfig{URL: databaseURL},
 		JWT:      JWTConfig{Secret: jwtSecret},
 		Catalog:  CatalogConfig{Addr: catalogAddr},
+		Orders:   OrdersConfig{Addr: ordersAddr},
 	}, nil
 }

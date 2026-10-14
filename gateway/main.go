@@ -12,6 +12,7 @@ import (
 	"marketplace/gateway/internal/orders"
 	"marketplace/gateway/pkg/jwt"
 	"marketplace/gen/catalogpb"
+	"marketplace/gen/orderspb"
 	"net/http"
 	"time"
 
@@ -76,7 +77,12 @@ func main() {
 	listingsService := listings.NewListingsService(catalogpb.NewCatalogServiceClient(catalogConn))
 	listings.NewListingsHandler(r, validate, authConfig, listingsService)
 
-	ordersService := orders.NewOrdersService()
+	ordersConn, err := grpc.NewClient(cfg.Orders.Addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		log.Fatalf("create orders client: %v", err)
+	}
+	defer ordersConn.Close()
+	ordersService := orders.NewOrdersService(orderspb.NewOrdersServiceClient(ordersConn))
 	orders.NewOrdersHandler(r, validate, authConfig, ordersService)
 
 	server := http.Server{
