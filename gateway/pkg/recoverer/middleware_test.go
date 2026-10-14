@@ -106,3 +106,37 @@ func TestAbortHandlerIsPreserved(t *testing.T) {
 	handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/", nil))
 	t.Fatal("intentional abort was swallowed")
 }
+
+func TestAbortedResponseStillHasRequestLog(t *testing.T) {
+	var output bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&output, nil))
+	handler := requestid.Middleware(httplog.Middleware(logger)(Middleware(logger)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = w.Write([]byte("partial"))
+		panic("failed after response started")
+	}))))
+	request := httptest.NewRequest("POST", "/partial", nil)
+	request.Header.Set("X-Request-ID", "partial-request")
+	recorder := httptest.NewRecorder()
+	defer func() {
+		if value := recover(); value != http.ErrAbortHandler {
+			t.Errorf("panic: %v", value)
+		}
+		if recorder.Code != 202 || recorder.Body.String() != "partial" {
+			t.Error("committed response was changed")
+		}
+		lines := strings.Split(strings.TrimSpace(output.String()), "\n")
+		if len(lines) != 2 {
+			t.Fatalf("expected panic and request logs, got %d: %s", len(lines), output.String())
+		}
+		var entry map[string]any
+		if err := json.Unmarshal([]byte(lines[1]), &entry); err != nil {
+			t.Fatal(err)
+		}
+		if entry["msg"] != "HTTP request" || entry["request_id"] != "partial-request" || entry["status"] != float64(202) || entry["level"] != "INFO" {
+			t.Errorf("request log: %v", entry)
+		}
+	}()
+	handler.ServeHTTP(recorder, request)
+	t.Fatal("connection abort was swallowed")
+}

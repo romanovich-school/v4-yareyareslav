@@ -132,7 +132,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	if err := run(ctx); err != nil {
-		slog.Error("gateway failed", "error", err)
+		slog.New(slog.NewJSONHandler(os.Stderr, nil)).Error("gateway failed", "error", err)
 		stop()
 		os.Exit(1)
 	}

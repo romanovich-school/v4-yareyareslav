@@ -204,3 +204,42 @@ func TestAuthBodyErrorsAreJSON(t *testing.T) {
 		t.Errorf("fields: %+v", body.Fields)
 	}
 }
+
+func TestRegistrationPasswordByteLimit(t *testing.T) {
+	manager := jwt.NewManager("test-secret", jwt.AccessTTL, jwt.RefreshTTL)
+	for _, test := range []struct {
+		name, password string
+		code           int
+	}{
+		{"ASCII boundary", strings.Repeat("a", 72), 201},
+		{"ASCII too long", strings.Repeat("a", 73), 400},
+		{"UTF-8 boundary", strings.Repeat("\u044f", 36), 201},
+		{"UTF-8 too long", strings.Repeat("\u044f", 37), 400},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			repository := &authRepository{}
+			router := authRouter(repository, manager)
+			data, err := json.Marshal(RegisterUserRequest{Email: "buyer@example.com", Password: test.password, Role: "buyer"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			result := authRequest(router, "/auth/register", string(data))
+			if result.Code != test.code {
+				t.Fatalf("status %d, body %s", result.Code, result.Body.String())
+			}
+			if test.code == 400 {
+				assertAuthError(t, result, 400, "validation_failed")
+				var body ErrorResponse
+				if err := json.Unmarshal(result.Body.Bytes(), &body); err != nil {
+					t.Fatal(err)
+				}
+				if len(body.Fields) != 1 || body.Fields[0].Field != "password" {
+					t.Errorf("validation fields: %+v", body.Fields)
+				}
+				if repository.user.ID != nil {
+					t.Error("invalid password reached repository")
+				}
+			}
+		})
+	}
+}

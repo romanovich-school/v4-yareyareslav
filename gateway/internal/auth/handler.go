@@ -6,12 +6,14 @@ import (
 	"errors"
 	"log"
 	"marketplace/gateway/pkg/request"
+	"marketplace/gateway/pkg/response"
 	"net/http"
 	"reflect"
 	"strings"
 
 	"github.com/go-chi/chi"
 	"github.com/go-playground/validator"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type Service interface {
@@ -61,6 +63,10 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 
 	result, err := h.service.Register(r.Context(), registerReq)
 	if err != nil {
+		if errors.Is(err, bcrypt.ErrPasswordTooLong) {
+			response.ValidationError(w, []response.FieldError{{Field: "password", Message: "must be at most 72 bytes"}})
+			return
+		}
 		if errors.Is(err, ErrEmailAlreadyExists) {
 			writeConflictError(w, err.Error())
 			return
