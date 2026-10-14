@@ -1,6 +1,6 @@
 package orders
 
-type OrdersService struct {}
+type OrdersService struct{}
 
 func NewOrdersService() *OrdersService {
 	return &OrdersService{}

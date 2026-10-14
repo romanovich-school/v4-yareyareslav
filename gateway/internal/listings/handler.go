@@ -22,18 +22,18 @@ type Service interface {
 
 type ListingsHandler struct {
 	validate *validator.Validate
-	service Service
+	service  Service
 }
 
 func NewListingsHandler(
-	r chi.Router, 
+	r chi.Router,
 	validate *validator.Validate,
 	ac config.AuthConfig,
 	service Service,
 ) *ListingsHandler {
 	h := &ListingsHandler{
 		validate: validate,
-		service: service,
+		service:  service,
 	}
 
 	lr := chi.NewRouter()

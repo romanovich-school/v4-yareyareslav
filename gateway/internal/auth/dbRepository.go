@@ -33,7 +33,7 @@ func (r *AuthDBRepository) CreateUser(ctx context.Context, user User) (User, err
 	var id string
 
 	err := r.pool.QueryRow(
-		ctx, 
+		ctx,
 		query,
 		user.Email,
 		user.PasswordHash,
@@ -63,10 +63,10 @@ func (r *AuthDBRepository) FindUser(ctx context.Context, email string) (User, er
 		WHERE email = $1
 	`
 	var (
-		id string
-		userEmail string
+		id           string
+		userEmail    string
 		passwordHash string
-		role string
+		role         string
 	)
 
 	err := r.pool.QueryRow(
@@ -89,9 +89,9 @@ func (r *AuthDBRepository) FindUser(ctx context.Context, email string) (User, er
 	userID := UserID(id)
 
 	return User{
-		ID: &userID,
-		Email: userEmail,
+		ID:           &userID,
+		Email:        userEmail,
 		PasswordHash: passwordHash,
-		Role: role,
+		Role:         role,
 	}, nil
 }

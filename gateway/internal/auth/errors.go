@@ -18,9 +18,9 @@ type FieldError struct {
 
 const (
 	ErrKeyValidationFailed = "validation_failed"
-	ErrKeyConflict = "conflict"
-	ErrKeyInternal = "internal"
-	ErrKeyUnauthenticated = "unauthenticated"
+	ErrKeyConflict         = "conflict"
+	ErrKeyInternal         = "internal"
+	ErrKeyUnauthenticated  = "unauthenticated"
 )
 
 func writeError(

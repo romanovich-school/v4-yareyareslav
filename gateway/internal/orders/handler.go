@@ -15,15 +15,15 @@ type Service interface {
 }
 
 type OrdersHandler struct {
-	r chi.Router
-	validate *validator.Validate
+	r          chi.Router
+	validate   *validator.Validate
 	authConfig config.AuthConfig
-	service Service
+	service    Service
 }
 
 func NewOrdersHandler(
-	r chi.Router, 
-	validate *validator.Validate, 
+	r chi.Router,
+	validate *validator.Validate,
 	ac config.AuthConfig,
 	service Service,
 ) *OrdersHandler {

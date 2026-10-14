@@ -5,7 +5,7 @@ import (
 	"net/http"
 )
 
-func Body[T any](w http.ResponseWriter, obj T, status int) (error) {
+func Body[T any](w http.ResponseWriter, obj T, status int) error {
 	json, err := json.Marshal(obj)
 	if err != nil {
 		return err

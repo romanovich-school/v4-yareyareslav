@@ -22,11 +22,11 @@ import (
 
 type EnvConf struct {
 	databaseURL string
-	jwtSecret string
-	port string
+	jwtSecret   string
+	port        string
 }
 
-func checkEnv() (EnvConf) {
+func checkEnv() EnvConf {
 	err := godotenv.Load()
 	if err != nil {
 		log.Fatal("Error loading .env file")
@@ -49,8 +49,8 @@ func checkEnv() (EnvConf) {
 
 	return EnvConf{
 		databaseURL: databaseURL,
-		jwtSecret: jwtSecret,
-		port: ":" + port,
+		jwtSecret:   jwtSecret,
+		port:        ":" + port,
 	}
 }
 
@@ -58,7 +58,7 @@ func connectToDB(databaseURL string) (*pgxpool.Pool, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
 	defer cancel()
 
-	pool, err := pgxpool.New(ctx, databaseURL) 
+	pool, err := pgxpool.New(ctx, databaseURL)
 	if err != nil {
 		return nil, fmt.Errorf("create database: %w", err)
 	}
@@ -76,7 +76,7 @@ func main() {
 
 	pool, err := connectToDB(envs.databaseURL)
 	if err != nil {
-		log.Fatal(err);
+		log.Fatal(err)
 	}
 
 	if err := runMigrations(envs.databaseURL); err != nil {
@@ -86,7 +86,7 @@ func main() {
 	r := chi.NewRouter()
 	validate := validator.New()
 
-	jwtManager := jwt.NewManager(envs.jwtSecret, 15 * time.Minute, 7 * 24 * time.Hour)
+	jwtManager := jwt.NewManager(envs.jwtSecret, 15*time.Minute, 7*24*time.Hour)
 	jwtMiddleware := jwt.NewJWTMiddleware(jwtManager)
 	authConfig := config.NewAuthConfig(jwtMiddleware)
 
@@ -103,7 +103,7 @@ func main() {
 	orders.NewOrdersHandler(r, validate, authConfig, ordersService)
 
 	server := http.Server{
-		Addr: envs.port,
+		Addr:    envs.port,
 		Handler: r,
 	}
 	server.ListenAndServe()

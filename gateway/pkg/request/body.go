@@ -12,10 +12,10 @@ func Body[T any](w http.ResponseWriter, r *http.Request) (result T, err error) {
 		return
 	}
 
-	err = json.Unmarshal([]byte(body), &result);
+	err = json.Unmarshal([]byte(body), &result)
 	if err != nil {
 		http.Error(w, "failed to read unmarshal body", http.StatusBadRequest)
-		return 
+		return
 	}
 	return
 }

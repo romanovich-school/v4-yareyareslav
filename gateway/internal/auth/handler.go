@@ -19,16 +19,16 @@ type Service interface {
 
 type AuthHandler struct {
 	validate *validator.Validate
-	service Service
+	service  Service
 }
 
 func NewAuthHandler(
-	r chi.Router, 
-	validate *validator.Validate, 
+	r chi.Router,
+	validate *validator.Validate,
 	s Service,
 ) *AuthHandler {
 	h := &AuthHandler{
-		service: s,
+		service:  s,
 		validate: validate,
 	}
 
@@ -42,7 +42,7 @@ func NewAuthHandler(
 	return h
 }
 
-func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {	
+func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	registerReq, err := request.Body[RegisterUserRequest](w, r)
 	if err != nil {
 		writeValidationError(w, err.Error())
@@ -67,7 +67,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeInternalError(w, err.Error())
 		return
-	} 
+	}
 
 	w.Header().Add("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
@@ -91,7 +91,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		if errors.Is(err, ErrWrongPassword) || errors.Is(err, ErrNoUserWithSuchEmail) {
 			writeUnauthenticatedError(w, err.Error())
 			return
-		} 
+		}
 
 		writeInternalError(w, err.Error())
 		return
@@ -101,7 +101,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeInternalError(w, err.Error())
 		return
-	} 
+	}
 
 	w.Header().Add("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
@@ -121,12 +121,11 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 
 	result, err := h.service.Refresh(r.Context(), refreshReq)
 	if err != nil {
-		if 
-			errors.Is(err, ErrWrongTokenType) || 
+		if errors.Is(err, ErrWrongTokenType) ||
 			errors.Is(err, ErrExpiredToken) ||
 			errors.Is(err, ErrCorruptedToken) {
-				writeUnauthenticatedError(w, err.Error())
-				return
+			writeUnauthenticatedError(w, err.Error())
+			return
 		}
 		writeInternalError(w, err.Error())
 		return
@@ -136,11 +135,9 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeInternalError(w, err.Error())
 		return
-	} 
-	
+	}
+
 	w.Header().Add("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(resultJson))
 }
-
-

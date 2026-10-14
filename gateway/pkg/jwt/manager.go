@@ -8,21 +8,21 @@ import (
 )
 
 type Manager struct {
-	secret 			[]byte
-	accessTTL 	time.Duration
-	refreshTTL 	time.Duration
+	secret     []byte
+	accessTTL  time.Duration
+	refreshTTL time.Duration
 }
 
 func NewManager(secret string, accessTTL time.Duration, refreshTTL time.Duration) *Manager {
 	return &Manager{
-		secret: []byte(secret),
-		accessTTL: accessTTL,
+		secret:     []byte(secret),
+		accessTTL:  accessTTL,
 		refreshTTL: refreshTTL,
 	}
 }
 
 type Claims struct {
-	Role string `json:"user_role"`
+	Role      string `json:"user_role"`
 	TokenType string `json:"token_type"`
 
 	jwt.RegisteredClaims
@@ -32,11 +32,11 @@ func (m *Manager) generateToken(userID string, role string, tokenType string, tt
 	now := time.Now()
 
 	claims := Claims{
-		Role: role,
+		Role:      role,
 		TokenType: tokenType,
 		RegisteredClaims: jwt.RegisteredClaims{
-			Subject: userID,
-			IssuedAt: jwt.NewNumericDate(now),
+			Subject:   userID,
+			IssuedAt:  jwt.NewNumericDate(now),
 			ExpiresAt: jwt.NewNumericDate(now.Add(ttl)),
 		},
 	}
@@ -53,7 +53,6 @@ func (m *Manager) GenerateAccessToken(userID string, role string) (string, error
 func (m *Manager) GenerateRefreshToken(userID string, role string) (string, error) {
 	return m.generateToken(userID, role, "refresh", m.refreshTTL)
 }
-
 
 func (m *Manager) Parse(tokenString string) (*Claims, error) {
 	token, err := jwt.ParseWithClaims(

@@ -30,13 +30,13 @@ type Repository interface {
 
 type AuthService struct {
 	tokenManager TokenManager
-	repository Repository
+	repository   Repository
 }
 
 func NewAuthService(repository Repository, tokenManager TokenManager) *AuthService {
 	return &AuthService{
 		tokenManager: tokenManager,
-		repository: repository,
+		repository:   repository,
 	}
 }
 
@@ -61,9 +61,9 @@ func (s *AuthService) Register(ctx context.Context, req RegisterUserRequest) (Re
 	}
 
 	user := User{
-		Email: strings.ToLower(strings.TrimSpace(req.Email)),
+		Email:        strings.ToLower(strings.TrimSpace(req.Email)),
 		PasswordHash: string(passwordHash),
-		Role: req.Role,
+		Role:         req.Role,
 	}
 
 	newUser, err := s.repository.CreateUser(ctx, user)
@@ -77,12 +77,12 @@ func (s *AuthService) Register(ctx context.Context, req RegisterUserRequest) (Re
 	}
 
 	return RegisterUserResponse{
-		AccessToken: accessToken,
+		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
 		User: UserResponse{
-			ID: string(*newUser.ID),
+			ID:    string(*newUser.ID),
 			Email: user.Email,
-			Role: user.Role,
+			Role:  user.Role,
 		},
 	}, nil
 }
@@ -97,7 +97,7 @@ func (s *AuthService) Login(ctx context.Context, req LoginUserRequest) (LoginUse
 	}
 
 	err = bcrypt.CompareHashAndPassword(
-		[]byte(user.PasswordHash), 
+		[]byte(user.PasswordHash),
 		[]byte(req.Password),
 	)
 	if err != nil {
@@ -112,7 +112,7 @@ func (s *AuthService) Login(ctx context.Context, req LoginUserRequest) (LoginUse
 		return LoginUserResponse{}, fmt.Errorf("login: generateTokens: %w", err)
 	}
 	return LoginUserResponse{
-		AccessToken: accessToken,
+		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
 	}, nil
 }
@@ -135,7 +135,7 @@ func (s *AuthService) Refresh(ctx context.Context, req RefreshTokenRequest) (Ref
 	}
 
 	return RefreshTokenResponse{
-		AccessToken: accessToken,
+		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
 	}, nil
 }
