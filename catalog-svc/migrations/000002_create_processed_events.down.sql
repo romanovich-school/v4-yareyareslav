@@ -1,1 +1,0 @@
-DROP TABLE processed_events;

@@ -24,8 +24,7 @@
 
 Форматы: `DATABASE_URL=postgres://user:pass@host:port/db?sslmode=…` (локальный compose с `sslmode=disable`, Neon требует `sslmode=require`, код про это не знает), `REDIS_URL=redis://host:6379`, `KAFKA_BROKERS=host:9092[,host2:9092]`, `*_GRPC_ADDR=host:port` без схемы. Локальные значения лежат в `.env.example`, `make setup` копирует его в `.env`.
 
-Сервис сyt
-^&олько потом начинает слушать. gateway начинает отвечать на `/healthz` только когда сам готов; тесты ждут `/healthz` до 90 секунд.
+Сервис с базой сначала накатывает миграции (версионированные, с таблицей версий) и только потом начинает слушать. gateway начинает отвечать на `/healthz` только когда сам готов; тесты ждут `/healthz` до 90 секунд.
 
 ## HTTP (gateway)
 
