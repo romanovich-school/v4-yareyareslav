@@ -7,6 +7,7 @@ import (
 	"marketplace/gateway/config"
 	"marketplace/gateway/internal/auth"
 	"marketplace/gateway/pkg/jwt"
+	"marketplace/gateway/pkg/requestid"
 	"marketplace/gateway/pkg/response"
 	"marketplace/gen/orderspb"
 	"net/http"
@@ -16,7 +17,6 @@ import (
 	"github.com/go-chi/chi"
 	"github.com/go-playground/validator"
 	"github.com/google/uuid"
-	"google.golang.org/grpc/metadata"
 )
 
 type Service interface {
@@ -36,7 +36,7 @@ func NewOrdersHandler(r chi.Router, _ *validator.Validate, ac config.AuthConfig,
 }
 
 func requestContext(r *http.Request) context.Context {
-	return metadata.AppendToOutgoingContext(r.Context(), "x-request-id", r.Header.Get("X-Request-ID"))
+	return requestid.OutgoingContext(r.Context())
 }
 
 func (h *OrdersHandler) GetOrders() http.HandlerFunc {

@@ -3,6 +3,7 @@ package healthz
 import (
 	"context"
 	"encoding/json"
+	"marketplace/gateway/pkg/requestid"
 	"marketplace/gateway/pkg/response"
 	"marketplace/gen/catalogpb"
 	"marketplace/gen/orderspb"
@@ -48,6 +49,7 @@ func testClient(t *testing.T, check func(context.Context, *healthpb.HealthCheckR
 }
 func healthRequest(catalog, orders healthpb.HealthClient) *httptest.ResponseRecorder {
 	router := chi.NewRouter()
+	router.Use(requestid.Middleware)
 	NewHealthzHandler(router, catalog, orders)
 	request := httptest.NewRequest("GET", "/healthz", nil)
 	request.Header.Set("X-Request-ID", "health-request")

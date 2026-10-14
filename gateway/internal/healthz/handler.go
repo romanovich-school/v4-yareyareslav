@@ -3,6 +3,7 @@ package healthz
 import (
 	"context"
 	"log"
+	"marketplace/gateway/pkg/requestid"
 	"marketplace/gateway/pkg/response"
 	"marketplace/gen/catalogpb"
 	"marketplace/gen/orderspb"
@@ -11,7 +12,6 @@ import (
 
 	"github.com/go-chi/chi"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
-	"google.golang.org/grpc/metadata"
 )
 
 type HealthzHandler struct {
@@ -26,11 +26,8 @@ func NewHealthzHandler(r chi.Router, catalog, orders healthpb.HealthClient) *Hea
 }
 
 func (h *HealthzHandler) CheckHealthz(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(requestid.OutgoingContext(r.Context()), 3*time.Second)
 	defer cancel()
-	if requestID := r.Header.Get("X-Request-ID"); requestID != "" {
-		ctx = metadata.AppendToOutgoingContext(ctx, "x-request-id", requestID)
-	}
 	type result struct {
 		name    string
 		serving bool

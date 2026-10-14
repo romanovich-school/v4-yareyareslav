@@ -7,6 +7,7 @@ import (
 	"marketplace/gateway/config"
 	"marketplace/gateway/internal/auth"
 	"marketplace/gateway/pkg/jwt"
+	"marketplace/gateway/pkg/requestid"
 	"marketplace/gateway/pkg/response"
 	"marketplace/gen/catalogpb"
 	"net/http"
@@ -17,7 +18,6 @@ import (
 	"github.com/google/uuid"
 
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 )
 
@@ -54,7 +54,7 @@ func writeRPCError(w http.ResponseWriter, err error) {
 	response.GRPCError(w, err)
 }
 func requestContext(r *http.Request) context.Context {
-	return metadata.AppendToOutgoingContext(r.Context(), "x-request-id", r.Header.Get("X-Request-ID"))
+	return requestid.OutgoingContext(r.Context())
 }
 func listingID(w http.ResponseWriter, r *http.Request) (string, bool) {
 	id := chi.URLParam(r, "id")

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"marketplace/gateway/config"
 	"marketplace/gateway/pkg/jwt"
+	"marketplace/gateway/pkg/requestid"
 	"marketplace/gateway/pkg/response"
 	"marketplace/gen/orderspb"
 	"net"
@@ -55,6 +56,7 @@ func testRouter(t *testing.T, stub *ordersStub) (http.Handler, *jwt.Manager) {
 	t.Cleanup(func() { _ = conn.Close() })
 	manager := jwt.NewManager("test-secret", 5*time.Minute, 7*24*time.Hour)
 	router := chi.NewRouter()
+	router.Use(requestid.Middleware)
 	NewOrdersHandler(router, nil, config.NewAuthConfig(jwt.NewJWTMiddleware(manager)), NewOrdersService(orderspb.NewOrdersServiceClient(conn)))
 	return router, manager
 }

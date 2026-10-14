@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"marketplace/gateway/config"
 	"marketplace/gateway/pkg/jwt"
+	"marketplace/gateway/pkg/requestid"
 	"marketplace/gen/catalogpb"
 	"net"
 	"net/http"
@@ -67,6 +68,7 @@ func testRouter(t *testing.T, stub *catalogStub) (http.Handler, *jwt.Manager) {
 	t.Cleanup(func() { _ = conn.Close() })
 	manager := jwt.NewManager("test-secret", 5*time.Minute, 7*24*time.Hour)
 	router := chi.NewRouter()
+	router.Use(requestid.Middleware)
 	NewListingsHandler(router, nil, config.NewAuthConfig(jwt.NewJWTMiddleware(manager)), NewListingsService(catalogpb.NewCatalogServiceClient(conn)))
 	return router, manager
 }
@@ -314,5 +316,29 @@ func TestPriceExactConversion(t *testing.T) {
 				t.Fatal("price did not roundtrip")
 			}
 		})
+	}
+}
+
+func TestGeneratedRequestIDReachesCatalog(t *testing.T) {
+	received := make(chan string, 1)
+	router, _ := testRouter(t, &catalogStub{get: func(ctx context.Context, req *catalogpb.GetCatalogRequest) (*catalogpb.GetCatalogResponse, error) {
+		md, _ := metadata.FromIncomingContext(ctx)
+		values := md.Get("x-request-id")
+		if len(values) != 1 {
+			t.Errorf("request ID metadata: %v", values)
+			received <- ""
+		} else {
+			received <- values[0]
+		}
+		return &catalogpb.GetCatalogResponse{Listing: sampleListing()}, nil
+	}})
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, httptest.NewRequest("GET", "/listings/"+testListingID, nil))
+	if recorder.Code != 200 {
+		t.Fatalf("status %d, body %s", recorder.Code, recorder.Body.String())
+	}
+	id := recorder.Header().Get("X-Request-ID")
+	if id == "" || id != <-received {
+		t.Fatalf("response and gRPC IDs do not match: %q", id)
 	}
 }
