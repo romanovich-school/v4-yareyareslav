@@ -103,13 +103,15 @@ func run(ctx context.Context, errChan chan error) (runErr error) {
 	listingsGRPCHandler := handler.NewGRPCHandler(listingsService)
 
 	reader := kafka.NewReader(kafka.ReaderConfig{
-		Brokers:        cfg.Kafka.Brokers,
-		GroupID:        "catalog-svc",
-		Topic:          "order.created",
-		CommitInterval: 0,
-		StartOffset:    kafka.FirstOffset,
-		MinBytes:       1,
-		MaxBytes:       10 * 1024 * 1024,
+		Brokers:                cfg.Kafka.Brokers,
+		GroupID:                "catalog-svc",
+		Topic:                  "order.created",
+		CommitInterval:         0,
+		StartOffset:            kafka.FirstOffset,
+		MinBytes:               1,
+		MaxBytes:               10 * 1024 * 1024,
+		WatchPartitionChanges:  true,
+		PartitionWatchInterval: time.Second,
 	})
 	dlqWriter := &kafka.Writer{
 		Addr:                   kafka.TCP(cfg.Kafka.Brokers...),
