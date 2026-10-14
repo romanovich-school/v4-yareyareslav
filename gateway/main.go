@@ -14,6 +14,7 @@ import (
 	"marketplace/gateway/pkg/jwt"
 	"marketplace/gen/catalogpb"
 	"marketplace/gen/orderspb"
+	"marketplace/web"
 	"net"
 	"net/http"
 	"os"
@@ -63,6 +64,12 @@ func run(ctx context.Context) (runErr error) {
 	}
 
 	r := chi.NewRouter()
+	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		if _, err := w.Write(web.Index); err != nil {
+			slog.ErrorContext(r.Context(), "write frontend response", "error", err)
+		}
+	})
 	validate := validator.New()
 
 	jwtManager := jwt.NewManager(cfg.JWT.Secret, jwt.AccessTTL, jwt.RefreshTTL)
