@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log"
 	"marketplace/gateway/pkg/request"
 	"net/http"
 
@@ -71,7 +72,9 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Add("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	w.Write([]byte(resultJson))
+	if _, err := w.Write(resultJson); err != nil {
+		log.Printf("write register response: %v", err)
+	}
 
 }
 
@@ -105,7 +108,9 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Add("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(resultJson))
+	if _, err := w.Write(resultJson); err != nil {
+		log.Printf("write login response: %v", err)
+	}
 }
 
 func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
@@ -139,5 +144,7 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Add("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(resultJson))
+	if _, err := w.Write(resultJson); err != nil {
+		log.Printf("write refresh response: %v", err)
+	}
 }

@@ -1,6 +1,7 @@
 package healthz
 
 import (
+	"log"
 	"net/http"
 
 	"github.com/go-chi/chi"
@@ -19,5 +20,7 @@ func NewHealthzHandler(r chi.Router) *HealthzHandler {
 func (h *HealthzHandler) CheckHealthz(w http.ResponseWriter, r *http.Request) {
 	w.Header().Add("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("OK"))
+	if _, err := w.Write([]byte("OK")); err != nil {
+		log.Printf("write health response: %v", err)
+	}
 }

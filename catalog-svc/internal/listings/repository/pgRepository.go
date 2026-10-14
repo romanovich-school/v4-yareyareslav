@@ -165,7 +165,7 @@ func (r *PGRepository) Update(
 		return nil, fmt.Errorf("begin update listing: %w", err)
 	}
 	defer func() {
-		tx.Rollback(context.WithoutCancel(ctx))
+		_ = tx.Rollback(context.WithoutCancel(ctx))
 	}()
 
 	var isOwner bool
@@ -234,7 +234,7 @@ func (r *PGRepository) Reserve(
 		return 0, fmt.Errorf("begin reserve listing: %w", err)
 	}
 	defer func() {
-		tx.Rollback(context.WithoutCancel(ctx))
+		_ = tx.Rollback(context.WithoutCancel(ctx))
 	}()
 
 	var stock int64

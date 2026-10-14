@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"marketplace/gateway/config"
@@ -106,5 +107,7 @@ func main() {
 		Addr:    envs.port,
 		Handler: r,
 	}
-	server.ListenAndServe()
+	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		log.Fatal(err)
+	}
 }

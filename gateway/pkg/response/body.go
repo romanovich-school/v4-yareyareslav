@@ -13,6 +13,6 @@ func Body[T any](w http.ResponseWriter, obj T, status int) error {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	w.Write([]byte(json))
-	return nil
+	_, err = w.Write(json)
+	return err
 }

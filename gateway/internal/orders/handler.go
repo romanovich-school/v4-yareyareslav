@@ -14,12 +14,7 @@ type Service interface {
 	FindOrders()
 }
 
-type OrdersHandler struct {
-	r          chi.Router
-	validate   *validator.Validate
-	authConfig config.AuthConfig
-	service    Service
-}
+type OrdersHandler struct{}
 
 func NewOrdersHandler(
 	r chi.Router,

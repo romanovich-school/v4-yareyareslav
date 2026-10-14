@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"log"
 	"marketplace/gateway/pkg/response"
 	"net/http"
 )
@@ -29,36 +30,26 @@ func writeError(
 	code string,
 	message string,
 ) {
-	response.Body(w, ErrorResponse{
+	if err := response.Body(w, ErrorResponse{
 		Error:   code,
 		Message: message,
-	}, status)
+	}, status); err != nil {
+		log.Printf("write error response: %v", err)
+	}
 }
 
 func writeConflictError(w http.ResponseWriter, message string) {
-	response.Body(w, ErrorResponse{
-		Error:   ErrKeyConflict,
-		Message: message,
-	}, http.StatusConflict)
+	writeError(w, http.StatusConflict, ErrKeyConflict, message)
 }
 
 func writeValidationError(w http.ResponseWriter, message string) {
-	response.Body(w, ErrorResponse{
-		Error:   ErrKeyValidationFailed,
-		Message: message,
-	}, http.StatusBadRequest)
+	writeError(w, http.StatusBadRequest, ErrKeyValidationFailed, message)
 }
 
 func writeUnauthenticatedError(w http.ResponseWriter, message string) {
-	response.Body(w, ErrorResponse{
-		Error:   ErrKeyUnauthenticated,
-		Message: message,
-	}, http.StatusUnauthorized)
+	writeError(w, http.StatusUnauthorized, ErrKeyUnauthenticated, message)
 }
 
 func writeInternalError(w http.ResponseWriter, message string) {
-	response.Body(w, ErrorResponse{
-		Error:   ErrKeyInternal,
-		Message: message,
-	}, http.StatusInternalServerError)
+	writeError(w, http.StatusInternalServerError, ErrKeyInternal, message)
 }

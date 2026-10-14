@@ -102,7 +102,7 @@ func (s *AuthService) Login(ctx context.Context, req LoginUserRequest) (LoginUse
 	)
 	if err != nil {
 		if errors.Is(err, bcrypt.ErrMismatchedHashAndPassword) {
-			return LoginUserResponse{}, fmt.Errorf("login: comapre passwords: %w", ErrWrongPassword)
+			return LoginUserResponse{}, fmt.Errorf("login: compare passwords: %w", ErrWrongPassword)
 		}
 		return LoginUserResponse{}, fmt.Errorf("login: compare passwords: %w", ErrWrongPassword)
 	}
