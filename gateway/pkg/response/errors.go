@@ -19,6 +19,14 @@ type ErrorBody struct {
 	Fields  []FieldError `json:"fields,omitempty"`
 }
 
+func NotFound(w http.ResponseWriter, _ *http.Request) {
+	_ = Body(w, ErrorBody{Error: "not_found", Message: "route not found"}, http.StatusNotFound)
+}
+
+func MethodNotAllowed(w http.ResponseWriter, _ *http.Request) {
+	_ = Body(w, ErrorBody{Error: "method_not_allowed", Message: "method is not allowed for this route"}, http.StatusMethodNotAllowed)
+}
+
 func ValidationError(w http.ResponseWriter, fields []FieldError) {
 	_ = Body(w, ErrorBody{"validation_failed", "request is invalid", fields}, http.StatusBadRequest)
 }

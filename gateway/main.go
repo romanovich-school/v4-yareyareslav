@@ -16,6 +16,7 @@ import (
 	"marketplace/gateway/pkg/jwt"
 	"marketplace/gateway/pkg/recoverer"
 	"marketplace/gateway/pkg/requestid"
+	"marketplace/gateway/pkg/response"
 	"marketplace/gen/catalogpb"
 	"marketplace/gen/orderspb"
 	"marketplace/web"
@@ -68,6 +69,8 @@ func run(ctx context.Context) (runErr error) {
 	}
 
 	r := chi.NewRouter()
+	r.NotFound(response.NotFound)
+	r.MethodNotAllowed(response.MethodNotAllowed)
 	r.Use(requestid.Middleware)
 	r.Use(httplog.Middleware(slog.Default()))
 	r.Use(recoverer.Middleware(slog.Default()))
