@@ -125,7 +125,7 @@ func (s *AuthService) Refresh(ctx context.Context, req RefreshTokenRequest) (Ref
 	if claims.TokenType != "refresh" {
 		return RefreshTokenResponse{}, fmt.Errorf("refresh: parse token: %w", ErrWrongTokenType)
 	}
-	if time.Now().After(claims.ExpiresAt.Time) {
+	if claims.ExpiresAt == nil || !time.Now().Before(claims.ExpiresAt.Time) {
 		return RefreshTokenResponse{}, fmt.Errorf("refresh: parse token: %w", ErrExpiredToken)
 	}
 

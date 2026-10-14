@@ -5,58 +5,38 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"log/slog"
 	"marketplace/gateway/config"
 	"marketplace/gateway/internal/auth"
 	"marketplace/gateway/internal/healthz"
 	"marketplace/gateway/internal/listings"
 	"marketplace/gateway/internal/orders"
+	"marketplace/gateway/pkg/cors"
+	"marketplace/gateway/pkg/httplog"
 	"marketplace/gateway/pkg/jwt"
+	"marketplace/gateway/pkg/recoverer"
+	"marketplace/gateway/pkg/requestid"
+	"marketplace/gateway/pkg/response"
+	"marketplace/gen/catalogpb"
+	"marketplace/gen/orderspb"
+	"marketplace/web"
+	"net"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/go-chi/chi"
 	"github.com/go-playground/validator"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/joho/godotenv"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 )
 
-type EnvConf struct {
-	databaseURL string
-	jwtSecret   string
-	port        string
-}
-
-func checkEnv() EnvConf {
-	err := godotenv.Load()
-	if err != nil {
-		log.Fatal("Error loading .env file")
-		return EnvConf{}
-	}
-	databaseURL := os.Getenv("DATABASE_URL")
-	if databaseURL == "" {
-		log.Fatal("DATABASE_URL is required")
-		return EnvConf{}
-	}
-	jwtSecret := os.Getenv("JWT_SECRET")
-	if jwtSecret == "" {
-		log.Fatal("JWTSecret is dull")
-		return EnvConf{}
-	}
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
-	}
-
-	return EnvConf{
-		databaseURL: databaseURL,
-		jwtSecret:   jwtSecret,
-		port:        ":" + port,
-	}
-}
-
-func connectToDB(databaseURL string) (*pgxpool.Pool, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
+func connectToDB(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
+	ctx, cancel := context.WithTimeout(ctx, time.Second*3)
 	defer cancel()
 
 	pool, err := pgxpool.New(ctx, databaseURL)
@@ -72,42 +52,89 @@ func connectToDB(databaseURL string) (*pgxpool.Pool, error) {
 	return pool, nil
 }
 
-func main() {
-	envs := checkEnv()
-
-	pool, err := connectToDB(envs.databaseURL)
+func run(ctx context.Context) (runErr error) {
+	cfg, err := config.Load()
 	if err != nil {
-		log.Fatal(err)
+		return fmt.Errorf("load config: %w", err)
 	}
 
-	if err := runMigrations(envs.databaseURL); err != nil {
-		log.Fatalf("migrate database: %v", err)
+	pool, err := connectToDB(ctx, cfg.Database.URL)
+	if err != nil {
+		return err
+	}
+	defer pool.Close()
+
+	if err := runMigrations(cfg.Database.URL); err != nil {
+		return fmt.Errorf("migrate database: %w", err)
 	}
 
 	r := chi.NewRouter()
+	r.NotFound(response.NotFound)
+	r.MethodNotAllowed(response.MethodNotAllowed)
+	r.Use(requestid.Middleware)
+	r.Use(httplog.Middleware(slog.Default()))
+	r.Use(recoverer.Middleware(slog.Default()))
+	r.Use(cors.Middleware)
+	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		if _, err := w.Write(web.Index); err != nil {
+			slog.ErrorContext(r.Context(), "write frontend response", "error", err)
+		}
+	})
 	validate := validator.New()
 
-	jwtManager := jwt.NewManager(envs.jwtSecret, 15*time.Minute, 7*24*time.Hour)
+	jwtManager := jwt.NewManager(cfg.JWT.Secret, jwt.AccessTTL, jwt.RefreshTTL)
 	jwtMiddleware := jwt.NewJWTMiddleware(jwtManager)
 	authConfig := config.NewAuthConfig(jwtMiddleware)
-
-	healthz.NewHealthzHandler(r)
 
 	authDBRepository := auth.NewAuthDBRepository(pool)
 	authService := auth.NewAuthService(authDBRepository, jwtManager)
 	auth.NewAuthHandler(r, validate, authService)
 
-	listingsService := listings.NewListingsService()
+	catalogConn, err := grpc.NewClient(cfg.Catalog.Addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		return fmt.Errorf("create catalog client: %w", err)
+	}
+	defer func() {
+		if err := catalogConn.Close(); err != nil {
+			runErr = errors.Join(runErr, fmt.Errorf("close catalog client: %w", err))
+		}
+	}()
+	listingsService := listings.NewListingsService(catalogpb.NewCatalogServiceClient(catalogConn))
 	listings.NewListingsHandler(r, validate, authConfig, listingsService)
 
-	ordersService := orders.NewOrdersService()
+	ordersConn, err := grpc.NewClient(cfg.Orders.Addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		return fmt.Errorf("create orders client: %w", err)
+	}
+	defer func() {
+		if err := ordersConn.Close(); err != nil {
+			runErr = errors.Join(runErr, fmt.Errorf("close orders client: %w", err))
+		}
+	}()
+	ordersService := orders.NewOrdersService(orderspb.NewOrdersServiceClient(ordersConn))
 	orders.NewOrdersHandler(r, validate, authConfig, ordersService)
+	healthz.NewHealthzHandler(r, healthpb.NewHealthClient(catalogConn), healthpb.NewHealthClient(ordersConn))
 
 	server := http.Server{
-		Addr:    envs.port,
+		Addr:    cfg.HTTP.Addr,
 		Handler: r,
 	}
-	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		log.Fatal(err)
+	listener, err := net.Listen("tcp", cfg.HTTP.Addr)
+	if err != nil {
+		return fmt.Errorf("listen HTTP: %w", err)
 	}
+	return serveHTTP(ctx, &server, listener)
+}
+
+func main() {
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+	if err := run(ctx); err != nil {
+		slog.New(slog.NewJSONHandler(os.Stderr, nil)).Error("gateway failed", "error", err)
+		stop()
+		os.Exit(1)
+	}
+	log.Println("Application shutdown complete.")
 }

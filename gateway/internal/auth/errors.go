@@ -1,9 +1,12 @@
 package auth
 
 import (
+	"errors"
 	"log"
 	"marketplace/gateway/pkg/response"
 	"net/http"
+
+	"github.com/go-playground/validator"
 )
 
 type ErrorResponse struct {
@@ -42,8 +45,16 @@ func writeConflictError(w http.ResponseWriter, message string) {
 	writeError(w, http.StatusConflict, ErrKeyConflict, message)
 }
 
-func writeValidationError(w http.ResponseWriter, message string) {
-	writeError(w, http.StatusBadRequest, ErrKeyValidationFailed, message)
+func writeValidationError(w http.ResponseWriter, err error) {
+	fields := []response.FieldError{{Field: "body", Message: "must be a valid JSON object"}}
+	var validationErr validator.ValidationErrors
+	if errors.As(err, &validationErr) {
+		fields = make([]response.FieldError, 0, len(validationErr))
+		for _, field := range validationErr {
+			fields = append(fields, response.FieldError{Field: field.Field(), Message: "must satisfy " + field.Tag()})
+		}
+	}
+	response.ValidationError(w, fields)
 }
 
 func writeUnauthenticatedError(w http.ResponseWriter, message string) {

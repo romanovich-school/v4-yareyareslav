@@ -6,10 +6,14 @@ import (
 	"errors"
 	"log"
 	"marketplace/gateway/pkg/request"
+	"marketplace/gateway/pkg/response"
 	"net/http"
+	"reflect"
+	"strings"
 
 	"github.com/go-chi/chi"
 	"github.com/go-playground/validator"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type Service interface {
@@ -28,6 +32,9 @@ func NewAuthHandler(
 	validate *validator.Validate,
 	s Service,
 ) *AuthHandler {
+	validate.RegisterTagNameFunc(func(field reflect.StructField) string {
+		return strings.SplitN(field.Tag.Get("json"), ",", 2)[0]
+	})
 	h := &AuthHandler{
 		service:  s,
 		validate: validate,
@@ -46,16 +53,20 @@ func NewAuthHandler(
 func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	registerReq, err := request.Body[RegisterUserRequest](w, r)
 	if err != nil {
-		writeValidationError(w, err.Error())
+		writeValidationError(w, err)
 		return
 	}
 	if err := h.validate.Struct(registerReq); err != nil {
-		writeValidationError(w, err.Error())
+		writeValidationError(w, err)
 		return
 	}
 
 	result, err := h.service.Register(r.Context(), registerReq)
 	if err != nil {
+		if errors.Is(err, bcrypt.ErrPasswordTooLong) {
+			response.ValidationError(w, []response.FieldError{{Field: "password", Message: "must be at most 72 bytes"}})
+			return
+		}
 		if errors.Is(err, ErrEmailAlreadyExists) {
 			writeConflictError(w, err.Error())
 			return
@@ -81,11 +92,11 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	loginReq, err := request.Body[LoginUserRequest](w, r)
 	if err != nil {
-		writeValidationError(w, err.Error())
+		writeValidationError(w, err)
 		return
 	}
 	if err := h.validate.Struct(loginReq); err != nil {
-		writeValidationError(w, err.Error())
+		writeValidationError(w, err)
 		return
 	}
 
@@ -116,11 +127,11 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	refreshReq, err := request.Body[RefreshTokenRequest](w, r)
 	if err != nil {
-		writeValidationError(w, err.Error())
+		writeValidationError(w, err)
 		return
 	}
-	if err := h.validate.Struct(refreshReq); err != nil {
-		writeValidationError(w, err.Error())
+	if refreshReq.RefreshToken == "" {
+		writeUnauthenticatedError(w, "refresh token is required")
 		return
 	}
 

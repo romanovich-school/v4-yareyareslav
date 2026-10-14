@@ -5,6 +5,12 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
+)
+
+const (
+	AccessTTL  = 5 * time.Minute
+	RefreshTTL = 7 * 24 * time.Hour
 )
 
 type Manager struct {
@@ -22,10 +28,26 @@ func NewManager(secret string, accessTTL time.Duration, refreshTTL time.Duration
 }
 
 type Claims struct {
-	Role      string `json:"user_role"`
-	TokenType string `json:"token_type"`
+	Role      string `json:"role"`
+	TokenType string `json:"typ"`
 
 	jwt.RegisteredClaims
+}
+
+func (c Claims) Validate() error {
+	if _, err := uuid.Parse(c.Subject); err != nil || len(c.Subject) != 36 {
+		return errors.New("invalid subject")
+	}
+	if c.Role != "buyer" && c.Role != "seller" {
+		return errors.New("invalid role")
+	}
+	if c.TokenType != "access" && c.TokenType != "refresh" {
+		return errors.New("invalid token type")
+	}
+	if c.IssuedAt == nil {
+		return errors.New("issued-at claim is required")
+	}
+	return nil
 }
 
 func (m *Manager) generateToken(userID string, role string, tokenType string, ttl time.Duration) (string, error) {
@@ -62,6 +84,8 @@ func (m *Manager) Parse(tokenString string) (*Claims, error) {
 			return m.secret, nil
 		},
 		jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}),
+		jwt.WithExpirationRequired(),
+		jwt.WithIssuedAt(),
 	)
 
 	if err != nil {
