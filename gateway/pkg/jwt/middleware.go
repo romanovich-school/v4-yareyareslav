@@ -5,15 +5,19 @@ import (
 	"marketplace/gateway/pkg/response"
 	"net/http"
 	"strings"
-
-	"github.com/google/uuid"
 )
 
 type userIDKey struct{}
+type roleKey struct{}
 
 func UserID(ctx context.Context) string {
 	id, _ := ctx.Value(userIDKey{}).(string)
 	return id
+}
+
+func Role(ctx context.Context) string {
+	role, _ := ctx.Value(roleKey{}).(string)
+	return role
 }
 
 func writeAuthError(w http.ResponseWriter, code int, name, message string) {
@@ -34,6 +38,10 @@ func NewJWTMiddleware(jwtManager *Manager) *Middleware {
 }
 
 func (m *Middleware) CheckUser(next http.Handler, role string) http.HandlerFunc {
+	return m.Authenticate(RequireRole(next, role))
+}
+
+func (m *Middleware) Authenticate(next http.Handler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		authorization := r.Header.Get("Authorization")
 		if authorization == "" {
@@ -56,15 +64,19 @@ func (m *Middleware) CheckUser(next http.Handler, role string) http.HandlerFunc 
 			writeAuthError(w, http.StatusUnauthorized, "unauthenticated", "access token is required")
 			return
 		}
-		if _, err := uuid.Parse(claims.Subject); err != nil || len(claims.Subject) != 36 {
-			writeAuthError(w, http.StatusUnauthorized, "unauthenticated", "invalid user ID")
-			return
-		}
-		if claims.Role != role {
+		ctx := context.WithValue(r.Context(), userIDKey{}, claims.Subject)
+		ctx = context.WithValue(ctx, roleKey{}, claims.Role)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	}
+}
+
+func RequireRole(next http.Handler, role string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if Role(r.Context()) != role {
 			writeAuthError(w, http.StatusForbidden, "forbidden", "role is not permitted")
 			return
 		}
 
-		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), userIDKey{}, claims.Subject)))
+		next.ServeHTTP(w, r)
 	}
 }

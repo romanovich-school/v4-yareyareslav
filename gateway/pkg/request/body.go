@@ -2,20 +2,23 @@ package request
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 )
 
 func Body[T any](w http.ResponseWriter, r *http.Request) (result T, err error) {
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		return
+	var value *T
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
+	if err := decoder.Decode(&value); err != nil {
+		return result, fmt.Errorf("invalid request body: %w", err)
 	}
-
-	err = json.Unmarshal([]byte(body), &result)
-	if err != nil {
-		http.Error(w, "failed to read unmarshal body", http.StatusBadRequest)
-		return
+	if value == nil {
+		return result, fmt.Errorf("request body must be a JSON object")
 	}
-	return
+	var extra any
+	if err := decoder.Decode(&extra); err != io.EOF {
+		return result, fmt.Errorf("request body must contain one JSON object")
+	}
+	return *value, nil
 }

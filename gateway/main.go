@@ -59,7 +59,7 @@ func main() {
 	r := chi.NewRouter()
 	validate := validator.New()
 
-	jwtManager := jwt.NewManager(cfg.JWT.Secret, 15*time.Minute, 7*24*time.Hour)
+	jwtManager := jwt.NewManager(cfg.JWT.Secret, jwt.AccessTTL, jwt.RefreshTTL)
 	jwtMiddleware := jwt.NewJWTMiddleware(jwtManager)
 	authConfig := config.NewAuthConfig(jwtMiddleware)
 
