@@ -13,6 +13,7 @@ import (
 	"marketplace/gateway/internal/orders"
 	"marketplace/gateway/pkg/httplog"
 	"marketplace/gateway/pkg/jwt"
+	"marketplace/gateway/pkg/recoverer"
 	"marketplace/gateway/pkg/requestid"
 	"marketplace/gen/catalogpb"
 	"marketplace/gen/orderspb"
@@ -68,6 +69,7 @@ func run(ctx context.Context) (runErr error) {
 	r := chi.NewRouter()
 	r.Use(requestid.Middleware)
 	r.Use(httplog.Middleware(slog.Default()))
+	r.Use(recoverer.Middleware(slog.Default()))
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		if _, err := w.Write(web.Index); err != nil {
