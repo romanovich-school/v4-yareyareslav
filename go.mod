@@ -8,6 +8,7 @@ require (
 )
 
 require (
+	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/golang-migrate/migrate/v4 v4.20.1 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
@@ -18,8 +19,10 @@ require (
 	github.com/lib/pq v1.10.9 // indirect
 	github.com/pashagolub/pgxmock/v5 v5.2.0 // indirect
 	github.com/pierrec/lz4/v4 v4.1.16 // indirect
+	github.com/redis/go-redis/v9 v9.23.0 // indirect
 	github.com/segmentio/kafka-go v0.4.51 // indirect
 	github.com/stretchr/testify v1.12.1 // indirect
+	go.uber.org/atomic v1.12.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/net v0.59.0 // indirect
 	golang.org/x/sync v0.23.0 // indirect

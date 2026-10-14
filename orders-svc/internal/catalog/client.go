@@ -26,7 +26,7 @@ func (c *Client) Reserve(ctx context.Context, listingID string, qty int) error {
 	}
 	_, err := c.client.Reserve(ctx, &catalogpb.ReserveCatalogRequest{
 		ListingId: listingID,
-		Qty:       int32(qty),
+		Qty:       int64(qty),
 	})
 	return err
 }
