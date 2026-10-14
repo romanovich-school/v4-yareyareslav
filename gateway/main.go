@@ -11,49 +11,16 @@ import (
 	"marketplace/gateway/internal/listings"
 	"marketplace/gateway/internal/orders"
 	"marketplace/gateway/pkg/jwt"
+	"marketplace/gen/catalogpb"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/go-chi/chi"
 	"github.com/go-playground/validator"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/joho/godotenv"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
-
-type EnvConf struct {
-	databaseURL string
-	jwtSecret   string
-	port        string
-}
-
-func checkEnv() EnvConf {
-	err := godotenv.Load()
-	if err != nil {
-		log.Fatal("Error loading .env file")
-		return EnvConf{}
-	}
-	databaseURL := os.Getenv("DATABASE_URL")
-	if databaseURL == "" {
-		log.Fatal("DATABASE_URL is required")
-		return EnvConf{}
-	}
-	jwtSecret := os.Getenv("JWT_SECRET")
-	if jwtSecret == "" {
-		log.Fatal("JWTSecret is dull")
-		return EnvConf{}
-	}
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
-	}
-
-	return EnvConf{
-		databaseURL: databaseURL,
-		jwtSecret:   jwtSecret,
-		port:        ":" + port,
-	}
-}
 
 func connectToDB(databaseURL string) (*pgxpool.Pool, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
@@ -73,21 +40,25 @@ func connectToDB(databaseURL string) (*pgxpool.Pool, error) {
 }
 
 func main() {
-	envs := checkEnv()
+	cfg, err := config.Load()
+	if err != nil {
+		log.Fatalf("load config: %v", err)
+	}
 
-	pool, err := connectToDB(envs.databaseURL)
+	pool, err := connectToDB(cfg.Database.URL)
 	if err != nil {
 		log.Fatal(err)
 	}
+	defer pool.Close()
 
-	if err := runMigrations(envs.databaseURL); err != nil {
+	if err := runMigrations(cfg.Database.URL); err != nil {
 		log.Fatalf("migrate database: %v", err)
 	}
 
 	r := chi.NewRouter()
 	validate := validator.New()
 
-	jwtManager := jwt.NewManager(envs.jwtSecret, 15*time.Minute, 7*24*time.Hour)
+	jwtManager := jwt.NewManager(cfg.JWT.Secret, 15*time.Minute, 7*24*time.Hour)
 	jwtMiddleware := jwt.NewJWTMiddleware(jwtManager)
 	authConfig := config.NewAuthConfig(jwtMiddleware)
 
@@ -97,14 +68,19 @@ func main() {
 	authService := auth.NewAuthService(authDBRepository, jwtManager)
 	auth.NewAuthHandler(r, validate, authService)
 
-	listingsService := listings.NewListingsService()
+	catalogConn, err := grpc.NewClient(cfg.Catalog.Addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		log.Fatalf("create catalog client: %v", err)
+	}
+	defer catalogConn.Close()
+	listingsService := listings.NewListingsService(catalogpb.NewCatalogServiceClient(catalogConn))
 	listings.NewListingsHandler(r, validate, authConfig, listingsService)
 
 	ordersService := orders.NewOrdersService()
 	orders.NewOrdersHandler(r, validate, authConfig, ordersService)
 
 	server := http.Server{
-		Addr:    envs.port,
+		Addr:    cfg.HTTP.Addr,
 		Handler: r,
 	}
 	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {

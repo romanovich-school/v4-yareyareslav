@@ -1,13 +1,13 @@
 package listings
 
-type ListingID int
+import "encoding/json"
 
 type Listing struct {
-	ID        *ListingID
-	Title     string
-	Price     float64
-	Stock     int
-	Sold      int
-	SellerID  int
-	CreatedAt string
+	ID        string      `json:"id"`
+	Title     string      `json:"title"`
+	Price     json.Number `json:"price"`
+	Stock     int64       `json:"stock"`
+	Sold      int64       `json:"sold"`
+	SellerID  string      `json:"seller_id"`
+	CreatedAt string      `json:"created_at"`
 }
