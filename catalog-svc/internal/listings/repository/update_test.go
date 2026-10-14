@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"marketplace/catalog-svc/internal/listings/model"
+	"strings"
 	"testing"
 	"time"
 
@@ -74,6 +75,91 @@ func TestUpdate(t *testing.T) {
 			}
 			if err := pool.ExpectationsWereMet(); err != nil {
 				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func TestUpdateDatabaseFailures(t *testing.T) {
+	failure := errors.New("database unavailable")
+	for _, tc := range []struct {
+		step, prefix string
+	}{
+		{step: "begin", prefix: "begin update listing:"},
+		{step: "owner", prefix: "check listing owner:"},
+		{step: "update", prefix: "update listing:"},
+	} {
+		t.Run(tc.step, func(t *testing.T) {
+			pool := newCatalogTestPool(t)
+			patch := model.UpdateListing{ID: testListingID, SellerID: testSellerID}
+			begin := pool.ExpectBegin()
+			if tc.step == "begin" {
+				begin.WillReturnError(failure)
+			} else {
+				owner := pool.ExpectQuery(`SELECT seller_id = \$2::uuid FROM listings WHERE id = \$1 FOR UPDATE`).
+					WithArgs(patch.ID, patch.SellerID)
+				if tc.step == "owner" {
+					owner.WillReturnError(failure)
+				} else {
+					owner.WillReturnRows(pgxmock.NewRows([]string{"is_owner"}).AddRow(true))
+					pool.ExpectQuery(`UPDATE listings SET title = COALESCE\(\$2::text, title\), price = COALESCE\(\$3::bigint, price\), stock = COALESCE\(\$4::bigint, stock\) WHERE id = \$1 RETURNING id::text, title, price, stock, sold, seller_id::text, created_at`).
+						WithArgs(patch.ID, patch.Title, patch.Price, patch.Stock).
+						WillReturnError(failure)
+				}
+				pool.ExpectRollback()
+			}
+
+			got, err := NewPGRepository(pool).Update(t.Context(), patch)
+			if got != nil || !errors.Is(err, failure) || !strings.HasPrefix(err.Error(), tc.prefix) {
+				t.Fatalf("listing = %+v, error = %v, want wrapped %v with prefix %q", got, err, failure, tc.prefix)
+			}
+		})
+	}
+}
+
+func TestUpdateOptionalFields(t *testing.T) {
+	title, price, stock := "updated", int64(1<<40), int64(1<<41)
+	original := model.Listing{
+		ID: testListingID, SellerID: testSellerID, Title: "original", Price: 100,
+		Stock: 5, Sold: 1 << 42, CreatedAt: testCreatedAt.UTC().Format(time.RFC3339Nano),
+	}
+	for _, tc := range []struct {
+		name  string
+		patch model.UpdateListing
+	}{
+		{name: "unchanged"},
+		{name: "price only", patch: model.UpdateListing{Price: &price}},
+		{name: "all fields", patch: model.UpdateListing{Title: &title, Price: &price, Stock: &stock}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			pool := newCatalogTestPool(t)
+			tc.patch.ID, tc.patch.SellerID = testListingID, testSellerID
+			want := original
+			if tc.patch.Title != nil {
+				want.Title = *tc.patch.Title
+			}
+			if tc.patch.Price != nil {
+				want.Price = *tc.patch.Price
+			}
+			if tc.patch.Stock != nil {
+				want.Stock = *tc.patch.Stock
+			}
+			pool.ExpectBegin()
+			pool.ExpectQuery(`SELECT seller_id = \$2::uuid FROM listings WHERE id = \$1 FOR UPDATE`).
+				WithArgs(tc.patch.ID, tc.patch.SellerID).
+				WillReturnRows(pgxmock.NewRows([]string{"is_owner"}).AddRow(true))
+			pool.ExpectQuery(`UPDATE listings SET title = COALESCE\(\$2::text, title\), price = COALESCE\(\$3::bigint, price\), stock = COALESCE\(\$4::bigint, stock\) WHERE id = \$1 RETURNING id::text, title, price, stock, sold, seller_id::text, created_at`).
+				WithArgs(tc.patch.ID, tc.patch.Title, tc.patch.Price, tc.patch.Stock).
+				WillReturnRows(listingRows().AddRow(want.ID, want.Title, want.Price, want.Stock, want.Sold, want.SellerID, testCreatedAt))
+			pool.ExpectCommit()
+			pool.ExpectRollback()
+
+			got, err := NewPGRepository(pool).Update(t.Context(), tc.patch)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got == nil || *got != want {
+				t.Fatalf("listing = %+v, want %+v", got, want)
 			}
 		})
 	}

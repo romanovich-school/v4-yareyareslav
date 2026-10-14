@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"marketplace/catalog-svc/internal/listings/dto"
 	"marketplace/catalog-svc/internal/listings/repository"
@@ -25,13 +26,48 @@ func (s getServiceStub) Get(ctx context.Context, id string) (*dto.GetListingResp
 }
 
 type headerStream struct {
-	headers metadata.MD
+	headers   metadata.MD
+	headerErr error
 }
 
 func (s *headerStream) Method() string { return catalogpb.CatalogService_Get_FullMethodName }
 func (s *headerStream) SetHeader(md metadata.MD) error {
+	if s.headerErr != nil {
+		return s.headerErr
+	}
 	s.headers = metadata.Join(s.headers, md)
 	return nil
+}
+
+func TestGetHeaderErrors(t *testing.T) {
+	for _, name := range []string{"missing transport stream", "transport rejects headers"} {
+		t.Run(name, func(t *testing.T) {
+			ctx := t.Context()
+			stream := &headerStream{headerErr: errors.New("transport failure")}
+			if name == "transport rejects headers" {
+				ctx = grpc.NewContextWithServerTransportStream(ctx, stream)
+			}
+			calls := 0
+			h := NewGRPCHandler(getServiceStub{get: func(gotCtx context.Context, id string) (*dto.GetListingResponse, error) {
+				calls++
+				if gotCtx != ctx || id != "listing-id" {
+					t.Fatal("unexpected service arguments")
+				}
+				return &dto.GetListingResponse{
+					Listing: dto.ListingResponse{ID: id, CreatedAt: "2026-10-13T09:00:00Z"},
+					Cache:   "HIT",
+				}, nil
+			}})
+			response, err := h.Get(ctx, &catalogpb.GetCatalogRequest{Id: "listing-id"})
+			st := status.Convert(err)
+			if response != nil || st.Code() != codes.Internal || st.Message() != "internal server error" {
+				t.Fatalf("response = %v, error = %v, want Internal without transport details", response, err)
+			}
+			if calls != 1 || len(stream.headers) != 0 {
+				t.Fatalf("service calls = %d, headers = %v", calls, stream.headers)
+			}
+		})
+	}
 }
 func (s *headerStream) SendHeader(md metadata.MD) error { return s.SetHeader(md) }
 func (s *headerStream) SetTrailer(metadata.MD) error    { return nil }

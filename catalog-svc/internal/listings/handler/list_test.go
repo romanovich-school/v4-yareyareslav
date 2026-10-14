@@ -30,6 +30,8 @@ func TestListPagination(t *testing.T) {
 		limit, offset int
 	}{
 		{"defaults", &catalogpb.ListCatalogRequest{}, 20, 0},
+		{"limit only", &catalogpb.ListCatalogRequest{Limit: &limit}, 5, 0},
+		{"offset only", &catalogpb.ListCatalogRequest{Offset: &offset}, 20, 10},
 		{"explicit", &catalogpb.ListCatalogRequest{Limit: &limit, Offset: &offset}, 5, 10},
 		{"explicit zero", &catalogpb.ListCatalogRequest{Limit: &zero}, 0, 0},
 	}
@@ -66,6 +68,8 @@ func TestListEmptyAndErrors(t *testing.T) {
 		{name: "empty", response: &dto.ListResponse{Total: 42}, code: codes.OK},
 		{name: "validation", err: fmt.Errorf("service list: %w", &service.ValidationError{Fields: []service.FieldError{{Field: "limit", Message: "must be between 1 and 100"}}}), code: codes.InvalidArgument},
 		{name: "invalid timestamp", response: &dto.ListResponse{Listings: []dto.ListingResponse{{CreatedAt: "invalid"}}}, code: codes.Internal},
+		{name: "invalid second item", response: &dto.ListResponse{Listings: []dto.ListingResponse{{ID: "valid", CreatedAt: "2026-10-13T09:00:00Z"}, {ID: "invalid", CreatedAt: "invalid"}}, Total: 2}, code: codes.Internal},
+		{name: "out of range timestamp", response: &dto.ListResponse{Listings: []dto.ListingResponse{{CreatedAt: "0000-01-01T00:00:00Z"}}}, code: codes.Internal},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
