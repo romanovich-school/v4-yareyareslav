@@ -75,6 +75,9 @@ func validateCreate(request dto.CreateListingRequest) error {
 
 func validateReserve(request dto.ReserveListingRequest) error {
 	var fields []FieldError
+	if request.ReservationID != "" && !isValidUUID(request.ReservationID) {
+		fields = append(fields, FieldError{Field: "reservation_id", Message: "must be a valid UUID"})
+	}
 	if !isValidUUID(request.ListingID) {
 		fields = append(fields, FieldError{Field: "listing_id", Message: "must be a valid UUID"})
 	}

@@ -25,6 +25,7 @@ type Service interface {
 	Update(context.Context, dto.UpdateListingRequest) (*dto.ListingResponse, error)
 	Delete(context.Context, string, string) error
 	Reserve(context.Context, dto.ReserveListingRequest) (*dto.ReserveListingResponse, error)
+	ReleaseReservation(context.Context, string) error
 }
 
 type GRPCHandler struct {
@@ -151,8 +152,9 @@ func (h *GRPCHandler) Reserve(
 	req *catalogpb.ReserveCatalogRequest,
 ) (*catalogpb.ReserveCatalogResponse, error) {
 	result, err := h.service.Reserve(ctx, dto.ReserveListingRequest{
-		ListingID: req.GetListingId(),
-		Qty:       req.GetQty(),
+		ReservationID: req.GetReservationId(),
+		ListingID:     req.GetListingId(),
+		Qty:           req.GetQty(),
 	})
 	if err != nil {
 		return nil, toGRPCError(err)
@@ -218,6 +220,8 @@ func toGRPCError(err error) error {
 		return status.Error(codes.PermissionDenied, "listing belongs to another seller")
 	case errors.Is(err, repository.ErrInsufficientStock):
 		return status.Error(codes.FailedPrecondition, "insufficient listing stock")
+	case errors.Is(err, repository.ErrReservationConflict):
+		return status.Error(codes.FailedPrecondition, err.Error())
 	default:
 		return status.Error(codes.Internal, "internal server error")
 	}

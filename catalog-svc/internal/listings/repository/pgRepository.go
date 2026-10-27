@@ -233,9 +233,7 @@ func (r *PGRepository) Reserve(
 	if err != nil {
 		return 0, fmt.Errorf("begin reserve listing: %w", err)
 	}
-	defer func() {
-		_ = tx.Rollback(context.WithoutCancel(ctx))
-	}()
+	defer rollbackReservation(ctx, tx)
 
 	var stock int64
 	err = tx.QueryRow(

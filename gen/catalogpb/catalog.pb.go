@@ -631,6 +631,7 @@ type ReserveCatalogRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ListingId     string                 `protobuf:"bytes,1,opt,name=listing_id,json=listingId,proto3" json:"listing_id,omitempty"`
 	Qty           int64                  `protobuf:"varint,2,opt,name=qty,proto3" json:"qty,omitempty"`
+	ReservationId string                 `protobuf:"bytes,3,opt,name=reservation_id,json=reservationId,proto3" json:"reservation_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -679,6 +680,57 @@ func (x *ReserveCatalogRequest) GetQty() int64 {
 	return 0
 }
 
+func (x *ReserveCatalogRequest) GetReservationId() string {
+	if x != nil {
+		return x.ReservationId
+	}
+	return ""
+}
+
+type ReleaseReservationRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ReservationId string                 `protobuf:"bytes,1,opt,name=reservation_id,json=reservationId,proto3" json:"reservation_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReleaseReservationRequest) Reset() {
+	*x = ReleaseReservationRequest{}
+	mi := &file_marketplace_catalog_v1_catalog_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReleaseReservationRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReleaseReservationRequest) ProtoMessage() {}
+
+func (x *ReleaseReservationRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_marketplace_catalog_v1_catalog_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReleaseReservationRequest.ProtoReflect.Descriptor instead.
+func (*ReleaseReservationRequest) Descriptor() ([]byte, []int) {
+	return file_marketplace_catalog_v1_catalog_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *ReleaseReservationRequest) GetReservationId() string {
+	if x != nil {
+		return x.ReservationId
+	}
+	return ""
+}
+
 type ReserveCatalogResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Remaining     int64                  `protobuf:"varint,1,opt,name=remaining,proto3" json:"remaining,omitempty"`
@@ -688,7 +740,7 @@ type ReserveCatalogResponse struct {
 
 func (x *ReserveCatalogResponse) Reset() {
 	*x = ReserveCatalogResponse{}
-	mi := &file_marketplace_catalog_v1_catalog_proto_msgTypes[12]
+	mi := &file_marketplace_catalog_v1_catalog_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -700,7 +752,7 @@ func (x *ReserveCatalogResponse) String() string {
 func (*ReserveCatalogResponse) ProtoMessage() {}
 
 func (x *ReserveCatalogResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_marketplace_catalog_v1_catalog_proto_msgTypes[12]
+	mi := &file_marketplace_catalog_v1_catalog_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -713,7 +765,7 @@ func (x *ReserveCatalogResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReserveCatalogResponse.ProtoReflect.Descriptor instead.
 func (*ReserveCatalogResponse) Descriptor() ([]byte, []int) {
-	return file_marketplace_catalog_v1_catalog_proto_rawDescGZIP(), []int{12}
+	return file_marketplace_catalog_v1_catalog_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *ReserveCatalogResponse) GetRemaining() int64 {
@@ -771,20 +823,24 @@ const file_marketplace_catalog_v1_catalog_proto_rawDesc = "" +
 	"\x14DeleteCatalogRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1b\n" +
 	"\tseller_id\x18\x02 \x01(\tR\bsellerId\"\x17\n" +
-	"\x15DeleteCatalogResponse\"H\n" +
+	"\x15DeleteCatalogResponse\"o\n" +
 	"\x15ReserveCatalogRequest\x12\x1d\n" +
 	"\n" +
 	"listing_id\x18\x01 \x01(\tR\tlistingId\x12\x10\n" +
-	"\x03qty\x18\x02 \x01(\x03R\x03qty\"6\n" +
+	"\x03qty\x18\x02 \x01(\x03R\x03qty\x12%\n" +
+	"\x0ereservation_id\x18\x03 \x01(\tR\rreservationId\"B\n" +
+	"\x19ReleaseReservationRequest\x12%\n" +
+	"\x0ereservation_id\x18\x01 \x01(\tR\rreservationId\"6\n" +
 	"\x16ReserveCatalogResponse\x12\x1c\n" +
-	"\tremaining\x18\x01 \x01(\x03R\tremaining2\xd7\x04\n" +
+	"\tremaining\x18\x01 \x01(\x03R\tremaining2\xb8\x05\n" +
 	"\x0eCatalogService\x12e\n" +
 	"\x06Create\x12,.marketplace.catalog.v1.CreateCatalogRequest\x1a-.marketplace.catalog.v1.CreateCatalogResponse\x12\\\n" +
 	"\x03Get\x12).marketplace.catalog.v1.GetCatalogRequest\x1a*.marketplace.catalog.v1.GetCatalogResponse\x12_\n" +
 	"\x04List\x12*.marketplace.catalog.v1.ListCatalogRequest\x1a+.marketplace.catalog.v1.ListCatalogResponse\x12e\n" +
 	"\x06Update\x12,.marketplace.catalog.v1.UpdateCatalogRequest\x1a-.marketplace.catalog.v1.UpdateCatalogResponse\x12N\n" +
 	"\x06Delete\x12,.marketplace.catalog.v1.DeleteCatalogRequest\x1a\x16.google.protobuf.Empty\x12h\n" +
-	"\aReserve\x12-.marketplace.catalog.v1.ReserveCatalogRequest\x1a..marketplace.catalog.v1.ReserveCatalogResponseB\x1bZ\x19marketplace/gen/catalogpbb\x06proto3"
+	"\aReserve\x12-.marketplace.catalog.v1.ReserveCatalogRequest\x1a..marketplace.catalog.v1.ReserveCatalogResponse\x12_\n" +
+	"\x12ReleaseReservation\x121.marketplace.catalog.v1.ReleaseReservationRequest\x1a\x16.google.protobuf.EmptyB\x1bZ\x19marketplace/gen/catalogpbb\x06proto3"
 
 var (
 	file_marketplace_catalog_v1_catalog_proto_rawDescOnce sync.Once
@@ -798,26 +854,27 @@ func file_marketplace_catalog_v1_catalog_proto_rawDescGZIP() []byte {
 	return file_marketplace_catalog_v1_catalog_proto_rawDescData
 }
 
-var file_marketplace_catalog_v1_catalog_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
+var file_marketplace_catalog_v1_catalog_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
 var file_marketplace_catalog_v1_catalog_proto_goTypes = []any{
-	(*Listing)(nil),                // 0: marketplace.catalog.v1.Listing
-	(*CreateCatalogRequest)(nil),   // 1: marketplace.catalog.v1.CreateCatalogRequest
-	(*CreateCatalogResponse)(nil),  // 2: marketplace.catalog.v1.CreateCatalogResponse
-	(*GetCatalogRequest)(nil),      // 3: marketplace.catalog.v1.GetCatalogRequest
-	(*GetCatalogResponse)(nil),     // 4: marketplace.catalog.v1.GetCatalogResponse
-	(*ListCatalogRequest)(nil),     // 5: marketplace.catalog.v1.ListCatalogRequest
-	(*ListCatalogResponse)(nil),    // 6: marketplace.catalog.v1.ListCatalogResponse
-	(*UpdateCatalogRequest)(nil),   // 7: marketplace.catalog.v1.UpdateCatalogRequest
-	(*UpdateCatalogResponse)(nil),  // 8: marketplace.catalog.v1.UpdateCatalogResponse
-	(*DeleteCatalogRequest)(nil),   // 9: marketplace.catalog.v1.DeleteCatalogRequest
-	(*DeleteCatalogResponse)(nil),  // 10: marketplace.catalog.v1.DeleteCatalogResponse
-	(*ReserveCatalogRequest)(nil),  // 11: marketplace.catalog.v1.ReserveCatalogRequest
-	(*ReserveCatalogResponse)(nil), // 12: marketplace.catalog.v1.ReserveCatalogResponse
-	(*timestamppb.Timestamp)(nil),  // 13: google.protobuf.Timestamp
-	(*emptypb.Empty)(nil),          // 14: google.protobuf.Empty
+	(*Listing)(nil),                   // 0: marketplace.catalog.v1.Listing
+	(*CreateCatalogRequest)(nil),      // 1: marketplace.catalog.v1.CreateCatalogRequest
+	(*CreateCatalogResponse)(nil),     // 2: marketplace.catalog.v1.CreateCatalogResponse
+	(*GetCatalogRequest)(nil),         // 3: marketplace.catalog.v1.GetCatalogRequest
+	(*GetCatalogResponse)(nil),        // 4: marketplace.catalog.v1.GetCatalogResponse
+	(*ListCatalogRequest)(nil),        // 5: marketplace.catalog.v1.ListCatalogRequest
+	(*ListCatalogResponse)(nil),       // 6: marketplace.catalog.v1.ListCatalogResponse
+	(*UpdateCatalogRequest)(nil),      // 7: marketplace.catalog.v1.UpdateCatalogRequest
+	(*UpdateCatalogResponse)(nil),     // 8: marketplace.catalog.v1.UpdateCatalogResponse
+	(*DeleteCatalogRequest)(nil),      // 9: marketplace.catalog.v1.DeleteCatalogRequest
+	(*DeleteCatalogResponse)(nil),     // 10: marketplace.catalog.v1.DeleteCatalogResponse
+	(*ReserveCatalogRequest)(nil),     // 11: marketplace.catalog.v1.ReserveCatalogRequest
+	(*ReleaseReservationRequest)(nil), // 12: marketplace.catalog.v1.ReleaseReservationRequest
+	(*ReserveCatalogResponse)(nil),    // 13: marketplace.catalog.v1.ReserveCatalogResponse
+	(*timestamppb.Timestamp)(nil),     // 14: google.protobuf.Timestamp
+	(*emptypb.Empty)(nil),             // 15: google.protobuf.Empty
 }
 var file_marketplace_catalog_v1_catalog_proto_depIdxs = []int32{
-	13, // 0: marketplace.catalog.v1.Listing.created_at:type_name -> google.protobuf.Timestamp
+	14, // 0: marketplace.catalog.v1.Listing.created_at:type_name -> google.protobuf.Timestamp
 	0,  // 1: marketplace.catalog.v1.CreateCatalogResponse.listing:type_name -> marketplace.catalog.v1.Listing
 	0,  // 2: marketplace.catalog.v1.GetCatalogResponse.listing:type_name -> marketplace.catalog.v1.Listing
 	0,  // 3: marketplace.catalog.v1.ListCatalogResponse.items:type_name -> marketplace.catalog.v1.Listing
@@ -828,14 +885,16 @@ var file_marketplace_catalog_v1_catalog_proto_depIdxs = []int32{
 	7,  // 8: marketplace.catalog.v1.CatalogService.Update:input_type -> marketplace.catalog.v1.UpdateCatalogRequest
 	9,  // 9: marketplace.catalog.v1.CatalogService.Delete:input_type -> marketplace.catalog.v1.DeleteCatalogRequest
 	11, // 10: marketplace.catalog.v1.CatalogService.Reserve:input_type -> marketplace.catalog.v1.ReserveCatalogRequest
-	2,  // 11: marketplace.catalog.v1.CatalogService.Create:output_type -> marketplace.catalog.v1.CreateCatalogResponse
-	4,  // 12: marketplace.catalog.v1.CatalogService.Get:output_type -> marketplace.catalog.v1.GetCatalogResponse
-	6,  // 13: marketplace.catalog.v1.CatalogService.List:output_type -> marketplace.catalog.v1.ListCatalogResponse
-	8,  // 14: marketplace.catalog.v1.CatalogService.Update:output_type -> marketplace.catalog.v1.UpdateCatalogResponse
-	14, // 15: marketplace.catalog.v1.CatalogService.Delete:output_type -> google.protobuf.Empty
-	12, // 16: marketplace.catalog.v1.CatalogService.Reserve:output_type -> marketplace.catalog.v1.ReserveCatalogResponse
-	11, // [11:17] is the sub-list for method output_type
-	5,  // [5:11] is the sub-list for method input_type
+	12, // 11: marketplace.catalog.v1.CatalogService.ReleaseReservation:input_type -> marketplace.catalog.v1.ReleaseReservationRequest
+	2,  // 12: marketplace.catalog.v1.CatalogService.Create:output_type -> marketplace.catalog.v1.CreateCatalogResponse
+	4,  // 13: marketplace.catalog.v1.CatalogService.Get:output_type -> marketplace.catalog.v1.GetCatalogResponse
+	6,  // 14: marketplace.catalog.v1.CatalogService.List:output_type -> marketplace.catalog.v1.ListCatalogResponse
+	8,  // 15: marketplace.catalog.v1.CatalogService.Update:output_type -> marketplace.catalog.v1.UpdateCatalogResponse
+	15, // 16: marketplace.catalog.v1.CatalogService.Delete:output_type -> google.protobuf.Empty
+	13, // 17: marketplace.catalog.v1.CatalogService.Reserve:output_type -> marketplace.catalog.v1.ReserveCatalogResponse
+	15, // 18: marketplace.catalog.v1.CatalogService.ReleaseReservation:output_type -> google.protobuf.Empty
+	12, // [12:19] is the sub-list for method output_type
+	5,  // [5:12] is the sub-list for method input_type
 	5,  // [5:5] is the sub-list for extension type_name
 	5,  // [5:5] is the sub-list for extension extendee
 	0,  // [0:5] is the sub-list for field type_name
@@ -855,7 +914,7 @@ func file_marketplace_catalog_v1_catalog_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_marketplace_catalog_v1_catalog_proto_rawDesc), len(file_marketplace_catalog_v1_catalog_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   13,
+			NumMessages:   14,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

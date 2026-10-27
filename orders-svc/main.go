@@ -18,6 +18,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -86,6 +87,14 @@ func run(ctx context.Context, errChan chan error) (runErr error) {
 	}()
 
 	ordersRepository := repository.NewPGRepository(pool, writer)
+	conn, err := grpc.NewClient(
+		cfg.Catalog.Addr,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
+	if err != nil {
+		return fmt.Errorf("create catalog client: %w", err)
+	}
+	defer conn.Close()
 
 	kafkaWorkerCtx, cancelWorker := context.WithCancel(context.Background())
 	workerDone := make(chan struct{})
@@ -102,21 +111,14 @@ func run(ctx context.Context, errChan chan error) (runErr error) {
 
 	kafkaWorker := kfk.NewWorker(ordersRepository)
 
+	catalogClient := catalog.NewClient(catalogpb.NewCatalogServiceClient(conn))
 	go func() {
 		defer close(workerDone)
-		kafkaWorker.Start(kafkaWorkerCtx)
+		var workers sync.WaitGroup
+		workers.Go(func() { kafkaWorker.Start(kafkaWorkerCtx) })
+		workers.Go(func() { runCompensations(kafkaWorkerCtx, ordersRepository, catalogClient.ReleaseReservation) })
+		workers.Wait()
 	}()
-
-	conn, err := grpc.NewClient(
-		cfg.Catalog.Addr,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-	)
-	if err != nil {
-		return fmt.Errorf("create catalog client: %w", err)
-	}
-	defer conn.Close()
-
-	catalogClient := catalog.NewClient(catalogpb.NewCatalogServiceClient(conn))
 	ordersService := service.NewOrdersService(ordersRepository, catalogClient)
 
 	// GRPC
