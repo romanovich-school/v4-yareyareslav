@@ -12,15 +12,48 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 type catalogClientStub struct {
 	catalogpb.CatalogServiceClient
 	reserve func(context.Context, *catalogpb.ReserveCatalogRequest, ...grpc.CallOption) (*catalogpb.ReserveCatalogResponse, error)
+	release func(context.Context, *catalogpb.ReleaseReservationRequest, ...grpc.CallOption) (*emptypb.Empty, error)
 }
 
 func (c *catalogClientStub) Reserve(ctx context.Context, req *catalogpb.ReserveCatalogRequest, opts ...grpc.CallOption) (*catalogpb.ReserveCatalogResponse, error) {
 	return c.reserve(ctx, req, opts...)
+}
+
+func (c *catalogClientStub) ReleaseReservation(ctx context.Context, req *catalogpb.ReleaseReservationRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	return c.release(ctx, req, opts...)
+}
+
+func TestReservationRPCs(t *testing.T) {
+	failure := status.Error(codes.Unavailable, "catalog unavailable")
+	ctx := metadata.NewIncomingContext(t.Context(), metadata.Pairs("x-request-id", "request"))
+	stub := &catalogClientStub{
+		reserve: func(_ context.Context, req *catalogpb.ReserveCatalogRequest, _ ...grpc.CallOption) (*catalogpb.ReserveCatalogResponse, error) {
+			if req.ReservationId != "reservation" || req.ListingId != "listing" || req.Qty != 3 {
+				t.Fatalf("reserve: %+v", req)
+			}
+			return &catalogpb.ReserveCatalogResponse{}, nil
+		},
+		release: func(callCtx context.Context, req *catalogpb.ReleaseReservationRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
+			md, _ := metadata.FromOutgoingContext(callCtx)
+			if req.ReservationId != "reservation" || !reflect.DeepEqual(md.Get("x-request-id"), []string{"request"}) {
+				t.Fatalf("release: %+v, metadata=%v", req, md)
+			}
+			return nil, failure
+		},
+	}
+	client := NewClient(stub)
+	if err := client.ReserveReservation(ctx, "listing", 3, "reservation"); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.ReleaseReservation(ctx, "reservation"); !errors.Is(err, failure) {
+		t.Fatalf("release error: %v", err)
+	}
 }
 
 func TestReserve_RequestAndMetadata(t *testing.T) {

@@ -15,6 +15,7 @@ const testSellerID = "550e8400-e29b-41d4-a716-446655440000"
 const testEventID = "550e8400-e29b-41d4-a716-446655440001"
 
 type repositoryStub struct {
+	Repository
 	create  func(context.Context, model.Listing) (*model.Listing, error)
 	get     func(context.Context, string) (*model.Listing, error)
 	list    func(context.Context, int, int) ([]model.Listing, int64, error)

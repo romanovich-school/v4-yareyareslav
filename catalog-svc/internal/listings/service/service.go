@@ -22,6 +22,8 @@ type Repository interface {
 	Update(context.Context, model.UpdateListing) (*model.Listing, error)
 	Delete(context.Context, string, string) error
 	Reserve(context.Context, string, int64) (int64, error)
+	ReserveReservation(context.Context, string, string, int64) (int64, error)
+	ReleaseReservation(context.Context, string) (string, error)
 	ApplyOrderCreated(context.Context, string, string, int64) (bool, error)
 }
 
@@ -177,7 +179,13 @@ func (s *CatalogService) Reserve(
 		return nil, fmt.Errorf("service reserve: %w", err)
 	}
 
-	remaining, err := s.repository.Reserve(ctx, request.ListingID, request.Qty)
+	var remaining int64
+	var err error
+	if request.ReservationID != "" {
+		remaining, err = s.repository.ReserveReservation(ctx, request.ReservationID, request.ListingID, request.Qty)
+	} else {
+		remaining, err = s.repository.Reserve(ctx, request.ListingID, request.Qty)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("service reserve: %w", err)
 	}

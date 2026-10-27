@@ -14,6 +14,7 @@ import (
 
 type Repository interface {
 	Create(ctx context.Context, order model.Order, idempKey string) (*model.Order, error)
+	CreateReserved(context.Context, model.Order, string, func(context.Context, string) error, func(context.Context, string) error) (*model.Order, error)
 	ReserveIdempotencyKey(ctx context.Context, buyerID, key string) (bool, error)
 	ReleaseIdempotencyKey(ctx context.Context, buyerID, key string) (bool, error)
 	GetIdempotencyKeyState(ctx context.Context, buyerID, key string) (*model.IdempotencyKeyState, error)
@@ -22,7 +23,8 @@ type Repository interface {
 }
 
 type Catalog interface {
-	Reserve(ctx context.Context, listingID string, qty int) error
+	ReserveReservation(ctx context.Context, listingID string, qty int, reservationID string) error
+	ReleaseReservation(context.Context, string) error
 }
 
 var ErrInvalidLimit = errors.New("limit out of range between 0 and 100")
@@ -132,24 +134,16 @@ func (s *OrdersService) Create(
 		}
 	}
 
-	reserveCtx, cancel := context.WithTimeout(ctx, time.Second*2)
-	err = s.catalog.Reserve(reserveCtx, createDto.ListingID, createDto.Qty)
-	cancel()
-
-	if err != nil {
-		return nil, fmt.Errorf("reserve listing: %w", err)
-	}
-
-	createCtx, cancel := context.WithTimeout(ctx, time.Second*2)
-	defer cancel()
-
 	order := model.Order{
 		BuyerID:   buyerID,
 		ListingID: createDto.ListingID,
 		Qty:       createDto.Qty,
 	}
 
-	createdOrder, err := s.rep.Create(createCtx, order, idempKey)
+	reservedKey = false
+	createdOrder, err := s.rep.CreateReserved(ctx, order, idempKey, func(reserveCtx context.Context, reservationID string) error {
+		return s.catalog.ReserveReservation(reserveCtx, createDto.ListingID, createDto.Qty, reservationID)
+	}, s.catalog.ReleaseReservation)
 	if err != nil {
 		return nil, fmt.Errorf("create order: %w", err)
 	}

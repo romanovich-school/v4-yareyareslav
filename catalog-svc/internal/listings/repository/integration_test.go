@@ -64,6 +64,59 @@ func TestRepositoryIntegration(t *testing.T) {
 		}
 	}
 	repo := NewPGRepository(pool)
+	t.Run("tracked reservations", func(t *testing.T) {
+		listing, err := repo.Create(ctx, model.Listing{SellerID: uuid.NewString(), Title: "reserved", Price: 100, Stock: 10})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer pool.Exec(ctx, `DELETE FROM listings WHERE id = $1`, listing.ID)
+		id := uuid.NewString()
+		for range 2 {
+			remaining, err := repo.ReserveReservation(ctx, id, listing.ID, 3)
+			if err != nil || remaining != 7 {
+				t.Fatalf("reserve: remaining=%d, error=%v", remaining, err)
+			}
+		}
+		if _, err := repo.ReserveReservation(ctx, id, listing.ID, 4); !errors.Is(err, ErrReservationConflict) {
+			t.Fatalf("changed quantity: %v", err)
+		}
+		var workers sync.WaitGroup
+		for range 20 {
+			workers.Go(func() {
+				if _, err := repo.ReleaseReservation(ctx, id); err != nil {
+					t.Error(err)
+				}
+			})
+		}
+		workers.Wait()
+		got, err := repo.Get(ctx, listing.ID)
+		if err != nil || got.Stock != 10 {
+			t.Fatalf("released stock: %+v, %v", got, err)
+		}
+		if _, err := repo.ReserveReservation(ctx, id, listing.ID, 3); !errors.Is(err, ErrReservationConflict) {
+			t.Fatalf("late reserve: %v", err)
+		}
+		cancelled := uuid.NewString()
+		if _, err := repo.ReleaseReservation(ctx, cancelled); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := repo.ReserveReservation(ctx, cancelled, listing.ID, 3); !errors.Is(err, ErrReservationConflict) {
+			t.Fatalf("reserve after early release: %v", err)
+		}
+		concurrentID := uuid.NewString()
+		for range 20 {
+			workers.Go(func() {
+				if _, err := repo.ReserveReservation(ctx, concurrentID, listing.ID, 2); err != nil {
+					t.Error(err)
+				}
+			})
+		}
+		workers.Wait()
+		got, err = repo.Get(ctx, listing.ID)
+		if err != nil || got.Stock != 8 {
+			t.Fatalf("concurrent reserve stock: %+v, %v", got, err)
+		}
+	})
 	sellerID := uuid.NewString()
 	listing, err := repo.Create(ctx, model.Listing{SellerID: sellerID, Title: "milk", Price: 5000, Stock: 10, Sold: 99})
 	if err != nil {

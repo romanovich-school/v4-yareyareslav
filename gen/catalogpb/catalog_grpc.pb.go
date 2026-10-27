@@ -20,12 +20,13 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	CatalogService_Create_FullMethodName  = "/marketplace.catalog.v1.CatalogService/Create"
-	CatalogService_Get_FullMethodName     = "/marketplace.catalog.v1.CatalogService/Get"
-	CatalogService_List_FullMethodName    = "/marketplace.catalog.v1.CatalogService/List"
-	CatalogService_Update_FullMethodName  = "/marketplace.catalog.v1.CatalogService/Update"
-	CatalogService_Delete_FullMethodName  = "/marketplace.catalog.v1.CatalogService/Delete"
-	CatalogService_Reserve_FullMethodName = "/marketplace.catalog.v1.CatalogService/Reserve"
+	CatalogService_Create_FullMethodName             = "/marketplace.catalog.v1.CatalogService/Create"
+	CatalogService_Get_FullMethodName                = "/marketplace.catalog.v1.CatalogService/Get"
+	CatalogService_List_FullMethodName               = "/marketplace.catalog.v1.CatalogService/List"
+	CatalogService_Update_FullMethodName             = "/marketplace.catalog.v1.CatalogService/Update"
+	CatalogService_Delete_FullMethodName             = "/marketplace.catalog.v1.CatalogService/Delete"
+	CatalogService_Reserve_FullMethodName            = "/marketplace.catalog.v1.CatalogService/Reserve"
+	CatalogService_ReleaseReservation_FullMethodName = "/marketplace.catalog.v1.CatalogService/ReleaseReservation"
 )
 
 // CatalogServiceClient is the client API for CatalogService service.
@@ -38,6 +39,7 @@ type CatalogServiceClient interface {
 	Update(ctx context.Context, in *UpdateCatalogRequest, opts ...grpc.CallOption) (*UpdateCatalogResponse, error)
 	Delete(ctx context.Context, in *DeleteCatalogRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	Reserve(ctx context.Context, in *ReserveCatalogRequest, opts ...grpc.CallOption) (*ReserveCatalogResponse, error)
+	ReleaseReservation(ctx context.Context, in *ReleaseReservationRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 }
 
 type catalogServiceClient struct {
@@ -108,6 +110,16 @@ func (c *catalogServiceClient) Reserve(ctx context.Context, in *ReserveCatalogRe
 	return out, nil
 }
 
+func (c *catalogServiceClient) ReleaseReservation(ctx context.Context, in *ReleaseReservationRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, CatalogService_ReleaseReservation_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // CatalogServiceServer is the server API for CatalogService service.
 // All implementations must embed UnimplementedCatalogServiceServer
 // for forward compatibility.
@@ -118,6 +130,7 @@ type CatalogServiceServer interface {
 	Update(context.Context, *UpdateCatalogRequest) (*UpdateCatalogResponse, error)
 	Delete(context.Context, *DeleteCatalogRequest) (*emptypb.Empty, error)
 	Reserve(context.Context, *ReserveCatalogRequest) (*ReserveCatalogResponse, error)
+	ReleaseReservation(context.Context, *ReleaseReservationRequest) (*emptypb.Empty, error)
 	mustEmbedUnimplementedCatalogServiceServer()
 }
 
@@ -145,6 +158,9 @@ func (UnimplementedCatalogServiceServer) Delete(context.Context, *DeleteCatalogR
 }
 func (UnimplementedCatalogServiceServer) Reserve(context.Context, *ReserveCatalogRequest) (*ReserveCatalogResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Reserve not implemented")
+}
+func (UnimplementedCatalogServiceServer) ReleaseReservation(context.Context, *ReleaseReservationRequest) (*emptypb.Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method ReleaseReservation not implemented")
 }
 func (UnimplementedCatalogServiceServer) mustEmbedUnimplementedCatalogServiceServer() {}
 func (UnimplementedCatalogServiceServer) testEmbeddedByValue()                        {}
@@ -275,6 +291,24 @@ func _CatalogService_Reserve_Handler(srv interface{}, ctx context.Context, dec f
 	return interceptor(ctx, in, info, handler)
 }
 
+func _CatalogService_ReleaseReservation_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ReleaseReservationRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CatalogServiceServer).ReleaseReservation(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CatalogService_ReleaseReservation_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CatalogServiceServer).ReleaseReservation(ctx, req.(*ReleaseReservationRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // CatalogService_ServiceDesc is the grpc.ServiceDesc for CatalogService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -305,6 +339,10 @@ var CatalogService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Reserve",
 			Handler:    _CatalogService_Reserve_Handler,
+		},
+		{
+			MethodName: "ReleaseReservation",
+			Handler:    _CatalogService_ReleaseReservation_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

@@ -25,6 +25,24 @@ func (r *repositoryStub) Create(ctx context.Context, order model.Order, key stri
 	return r.create(ctx, order, key)
 }
 
+func (r *repositoryStub) CreateReserved(ctx context.Context, order model.Order, key string, reserve, release func(context.Context, string) error) (*model.Order, error) {
+	reserveCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	err := reserve(reserveCtx, testOrderID)
+	cancel()
+	var created *model.Order
+	if err == nil {
+		createCtx, cancelCreate := context.WithTimeout(ctx, 2*time.Second)
+		created, err = r.create(createCtx, order, key)
+		cancelCreate()
+	}
+	if err != nil && key != "" {
+		cleanupCtx, cancelCleanup := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
+		defer cancelCleanup()
+		_, _ = r.release(cleanupCtx, order.BuyerID, key)
+	}
+	return created, err
+}
+
 func (r *repositoryStub) ReserveIdempotencyKey(ctx context.Context, buyerID, key string) (bool, error) {
 	return r.reserve(ctx, buyerID, key)
 }
@@ -50,6 +68,12 @@ type catalogFunc func(context.Context, string, int) error
 func (f catalogFunc) Reserve(ctx context.Context, listingID string, qty int) error {
 	return f(ctx, listingID, qty)
 }
+
+func (f catalogFunc) ReserveReservation(ctx context.Context, listingID string, qty int, reservationID string) error {
+	return f(ctx, listingID, qty)
+}
+
+func (f catalogFunc) ReleaseReservation(context.Context, string) error { return nil }
 
 func assertOperationContext(t *testing.T, ctx context.Context) {
 	t.Helper()

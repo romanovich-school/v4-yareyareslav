@@ -16,6 +16,20 @@ func NewClient(client catalogpb.CatalogServiceClient) *Client {
 }
 
 func (c *Client) Reserve(ctx context.Context, listingID string, qty int) error {
+	return c.ReserveReservation(ctx, listingID, qty, "")
+}
+
+func (c *Client) ReserveReservation(ctx context.Context, listingID string, qty int, reservationID string) error {
+	ctx = forwardRequestID(ctx)
+	_, err := c.client.Reserve(ctx, &catalogpb.ReserveCatalogRequest{
+		ReservationId: reservationID,
+		ListingId:     listingID,
+		Qty:           int64(qty),
+	})
+	return err
+}
+
+func forwardRequestID(ctx context.Context) context.Context {
 	if incoming, ok := metadata.FromIncomingContext(ctx); ok {
 		if values := incoming.Get("x-request-id"); len(values) > 0 {
 			outgoing, _ := metadata.FromOutgoingContext(ctx)
@@ -24,9 +38,10 @@ func (c *Client) Reserve(ctx context.Context, listingID string, qty int) error {
 			ctx = metadata.NewOutgoingContext(ctx, outgoing)
 		}
 	}
-	_, err := c.client.Reserve(ctx, &catalogpb.ReserveCatalogRequest{
-		ListingId: listingID,
-		Qty:       int64(qty),
-	})
+	return ctx
+}
+
+func (c *Client) ReleaseReservation(ctx context.Context, id string) error {
+	_, err := c.client.ReleaseReservation(forwardRequestID(ctx), &catalogpb.ReleaseReservationRequest{ReservationId: id})
 	return err
 }

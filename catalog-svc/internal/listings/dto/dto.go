@@ -30,8 +30,9 @@ type DeleteListingRequest struct {
 }
 
 type ReserveListingRequest struct {
-	ListingID string `json:"listing_id" validate:"required,uuid"`
-	Qty       int64  `json:"qty" validate:"gt=0"`
+	ReservationID string `json:"reservation_id"`
+	ListingID     string `json:"listing_id" validate:"required,uuid"`
+	Qty           int64  `json:"qty" validate:"gt=0"`
 }
 
 type ListingResponse struct {
