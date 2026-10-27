@@ -116,11 +116,12 @@ func TestReservationSagaIntegration(t *testing.T) {
 				return nil
 			}
 			created, err := repo.CreateReserved(requestCtx, order, key, reserve, release)
-			if scenario == "success" {
+			switch scenario {
+			case "success":
 				if err != nil || created == nil || stock != 5 || releaseCalls != 0 {
 					t.Fatalf("success: %+v, %v, stock=%d, releases=%d", created, err, stock, releaseCalls)
 				}
-			} else if scenario == "lost commit response" {
+			case "lost commit response":
 				if err == nil || stock != 5 || releaseCalls != 0 {
 					t.Fatalf("ambiguous commit: %v, stock=%d, releases=%d", err, stock, releaseCalls)
 				}
@@ -128,7 +129,7 @@ func TestReservationSagaIntegration(t *testing.T) {
 				if lookupErr != nil || state == nil || state.OrderID == nil {
 					t.Fatalf("committed order missing: %+v, %v", state, lookupErr)
 				}
-			} else {
+			default:
 				if err == nil {
 					t.Fatal("expected creation failure")
 				}

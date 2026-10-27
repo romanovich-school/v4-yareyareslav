@@ -2,8 +2,9 @@ package handler
 
 import (
 	"context"
-	"google.golang.org/protobuf/types/known/emptypb"
 	"marketplace/gen/catalogpb"
+
+	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 func (h *GRPCHandler) ReleaseReservation(ctx context.Context, req *catalogpb.ReleaseReservationRequest) (*emptypb.Empty, error) {
