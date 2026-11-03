@@ -50,6 +50,19 @@ postgres://user:password@ep-xxx-pooler.eu-central-1.aws.neon.tech/catalog?sslmod
 ```bash
 psql "<строка>" -c 'select current_database()'
 ```
+auth
+postgresql://neondb_owner:npg_UPZ43mXnVcBk@ep-lively-math-bayw2y18-pooler.c-8.eu-central-1.aws.neon.tech/auth?sslmode=require&channel_binding=require
+orders
+postgresql://neondb_owner:npg_UPZ43mXnVcBk@ep-lively-math-bayw2y18-pooler.c-8.eu-central-1.aws.neon.tech/orders?sslmode=require&channel_binding=require
+catalog
+postgresql://neondb_owner:npg_UPZ43mXnVcBk@ep-lively-math-bayw2y18-pooler.c-8.eu-central-1.aws.neon.tech/catalog?sslmode=require&channel_binding=require
+
+auth_dev
+postgresql://neondb_owner:npg_UPZ43mXnVcBk@ep-lively-math-bayw2y18-pooler.c-8.eu-central-1.aws.neon.tech/auth_dev?sslmode=require&channel_binding=require
+orders_dev
+postgresql://neondb_owner:npg_UPZ43mXnVcBk@ep-lively-math-bayw2y18-pooler.c-8.eu-central-1.aws.neon.tech/orders_dev?sslmode=require&channel_binding=require
+catalog_dev
+postgresql://neondb_owner:npg_UPZ43mXnVcBk@ep-lively-math-bayw2y18-pooler.c-8.eu-central-1.aws.neon.tech/catalog_dev?sslmode=require&channel_binding=require
 
 Neon засыпает через несколько минут простоя и просыпается на первом запросе за секунду.
 Бесплатный план имеет лимит на compute-часы в месяц; для учебной нагрузки его хватает.
