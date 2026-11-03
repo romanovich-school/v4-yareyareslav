@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
+	"log"
 	"marketplace/orders-svc/internal/orders/dto"
 	"marketplace/orders-svc/internal/orders/model"
 	"time"
@@ -72,7 +72,7 @@ func (s *OrdersService) Create(
 		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
 		defer cancel()
 		if _, cleanupErr := s.rep.ReleaseIdempotencyKey(cleanupCtx, buyerID, idempKey); cleanupErr != nil {
-			slog.WarnContext(cleanupCtx, "release idempotency key failed", "error", cleanupErr)
+			log.Printf("WARN: release idempotency key failed: %v", cleanupErr)
 		}
 	}()
 
