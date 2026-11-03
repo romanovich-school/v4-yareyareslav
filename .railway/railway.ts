@@ -6,11 +6,14 @@
 // в дашборде (отдельно для каждого окружения) и здесь помечены preserve(),
 // в git они не попадают.
 import {
+  database,
   defineRailway,
   github,
+  group,
   image,
   preserve,
   project,
+  ref,
   service,
   volume,
 } from "railway/iac";
@@ -29,7 +32,7 @@ export default defineRailway((ctx) => {
 
   // Kafka в KRaft-режиме, native-сборка: ~180 МБ RAM. Данные на томе, иначе
   // после сна/редеплоя брокер заново форматируется и топик пропадает.
-  const kafkaData = volume("kafka-data", { sizeMB: 1024 });
+  const kafkaData = volume("kafka-volume", { sizeMB: 5000, region: "us-west2" });
 
   const kafka = service("kafka", {
     source: image("apache/kafka-native:3.9.2"),
@@ -59,12 +62,19 @@ export default defineRailway((ctx) => {
     },
   });
 
-  const redis = service("redis", {
-    source: image("redis:7-alpine"),
-    env: {
-      REDIS_URL: "redis://${{RAILWAY_PRIVATE_DOMAIN}}:6379",
+  const redis = {
+    ...database("redis", "redis", {
+      image: "redis:7-alpine",
+      output: "REDIS_URL",
+      region: "europe-west4",
+    }),
+    variables: {
+      REDIS_URL: {
+        type: "literal" as const,
+        value: "redis://${{RAILWAY_PRIVATE_DOMAIN}}:6379",
+      },
     },
-  });
+  };
 
   // Postgres не здесь: три базы (auth, catalog, orders) живут в одном проекте Neon, см. DEPLOY.md.
   // Лимит триала — 5 сервисов в проекте, и это ровно kafka + redis + три твоих.
@@ -73,21 +83,24 @@ export default defineRailway((ctx) => {
 
   const catalog = service("catalog-service", {
     source: github(REPO, { branch: BRANCH }),
-    build: { dockerfilePath: "Dockerfile.catalog" },
+    build: { builder: "DOCKERFILE", dockerfilePath: "Dockerfile.catalog" },
+    deploy: { multiRegionConfig: { "europe-west4": { numReplicas: 1 } } },
     env: {
       GRPC_ADDR: ":50051",
       DATABASE_URL: preserve(), // Neon, база catalog, sslmode=require
-      REDIS_URL: redis.env.REDIS_URL,
+      REDIS_URL: ref(redis, "REDIS_URL"),
       KAFKA_BROKERS: kafka.env.KAFKA_BROKERS,
     },
   });
 
   const orders = service("orders-service", {
     source: github(REPO, { branch: BRANCH }),
-    build: { dockerfilePath: "Dockerfile.orders" },
+    build: { builder: "DOCKERFILE", dockerfilePath: "Dockerfile.orders" },
+    deploy: { multiRegionConfig: { "europe-west4": { numReplicas: 1 } } },
     env: {
       GRPC_ADDR: ":50052",
       DATABASE_URL: preserve(), // Neon, база orders, sslmode=require
+      REDIS_URL: preserve(),
       KAFKA_BROKERS: kafka.env.KAFKA_BROKERS,
       CATALOG_GRPC_ADDR: "${{catalog-service.RAILWAY_PRIVATE_DOMAIN}}:50051",
     },
@@ -95,7 +108,8 @@ export default defineRailway((ctx) => {
 
   const gateway = service("gateway", {
     source: github(REPO, { branch: BRANCH }),
-    build: { dockerfilePath: "Dockerfile.gateway" },
+    build: { builder: "DOCKERFILE", dockerfilePath: "Dockerfile.gateway" },
+    deploy: { multiRegionConfig: { "europe-west4": { numReplicas: 1 } } },
     healthcheck: "/healthz",
     healthcheckTimeout: 60,
     env: {
@@ -108,6 +122,9 @@ export default defineRailway((ctx) => {
   });
 
   return project("romanovich-school-marketplace", {
-    resources: [kafka, kafkaData, redis, catalog, orders, gateway],
+    resources: [
+      kafkaData,
+      group("romanovich-school-marketplace", [kafka, redis, catalog, orders, gateway]),
+    ],
   });
 });
