@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
+	"log"
 	"marketplace/orders-svc/internal/orders/model"
 	"time"
 
@@ -24,7 +24,7 @@ func (r *PGRepository) CreateReserved(ctx context.Context, order model.Order, ke
 		defer cancel()
 		if key != "" {
 			if cleanupErr := r.cleanupFailedReservationIntent(cleanupCtx, id, order.BuyerID, key); cleanupErr != nil {
-				slog.WarnContext(cleanupCtx, "release idempotency key failed", "error", cleanupErr)
+				log.Printf("WARN: release idempotency key failed: %v", cleanupErr)
 			}
 		}
 		return nil, fmt.Errorf("persist reservation saga: %w", err)
@@ -34,7 +34,7 @@ func (r *PGRepository) CreateReserved(ctx context.Context, order model.Order, ke
 		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 4*time.Second)
 		defer cancel()
 		if cleanupErr := r.reconcileReservation(cleanupCtx, id, release); cleanupErr != nil {
-			slog.WarnContext(cleanupCtx, "reservation compensation pending", "reservation_id", id, "error", cleanupErr)
+			log.Printf("WARN: reservation %s compensation pending: %v", id, cleanupErr)
 		}
 	}
 	return created, err

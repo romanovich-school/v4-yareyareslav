@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"log/slog"
 	"marketplace/gen/catalogpb"
 	"marketplace/gen/orderspb"
 	"marketplace/orders-svc/config"
@@ -104,7 +103,7 @@ func run(ctx context.Context, errChan chan error) (runErr error) {
 		defer cancel()
 		if err := waitWorker(stopCtx, workerDone); err != nil {
 			workerStopped = false
-			slog.Error("outbox worker shutdown timed out", "error", err)
+			log.Printf("ERROR: outbox worker shutdown timed out: %v", err)
 			runErr = errors.Join(runErr, fmt.Errorf("stop outbox worker: %w", err))
 		}
 	}()
@@ -188,7 +187,6 @@ func run(ctx context.Context, errChan chan error) (runErr error) {
 }
 
 func main() {
-	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
 	errChan := make(chan error, 1)
 	ctx, stop := signal.NotifyContext(
 		context.Background(),

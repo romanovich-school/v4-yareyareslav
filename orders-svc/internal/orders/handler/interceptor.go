@@ -2,7 +2,7 @@ package handler
 
 import (
 	"context"
-	"log/slog"
+	"log"
 	"time"
 
 	"google.golang.org/grpc"
@@ -20,25 +20,23 @@ func LoggingInterceptor(
 	started := time.Now()
 	response, err := handler(ctx, req)
 	code := status.Code(err)
-	requestID := ""
-	if incoming, ok := metadata.FromIncomingContext(ctx); ok {
-		if values := incoming.Get("x-request-id"); len(values) > 0 {
-			requestID = values[0]
-		}
-	}
-	level := slog.LevelInfo
+	level := "INFO"
 	if code == codes.Internal || code == codes.Unknown {
-		level = slog.LevelError
-	}
-	fields := []any{
-		"request_id", requestID,
-		"method", info.FullMethod,
-		"code", code.String(),
-		"dur_ms", time.Since(started).Milliseconds(),
+		level = "ERROR"
 	}
 	if err != nil {
-		fields = append(fields, "error", err)
+		log.Printf("%s: gRPC request %q for %s completed with %s in %d ms; error: %q", level, requestID(ctx), info.FullMethod, code, time.Since(started).Milliseconds(), err.Error())
+	} else {
+		log.Printf("%s: gRPC request %q for %s completed with %s in %d ms", level, requestID(ctx), info.FullMethod, code, time.Since(started).Milliseconds())
 	}
-	slog.Log(ctx, level, "gRPC request completed", fields...)
 	return response, err
+}
+
+func requestID(ctx context.Context) string {
+	if incoming, ok := metadata.FromIncomingContext(ctx); ok {
+		if values := incoming.Get("x-request-id"); len(values) > 0 {
+			return values[0]
+		}
+	}
+	return ""
 }

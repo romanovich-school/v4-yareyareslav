@@ -3,10 +3,10 @@ package handler
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
-	"io"
-	"log/slog"
+	"fmt"
+	"log"
+	"strings"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -44,9 +44,13 @@ func TestLoggingInterceptor(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				var output bytes.Buffer
-				previousLogger := slog.Default()
-				slog.SetDefault(slog.New(slog.NewJSONHandler(&output, nil)))
-				defer slog.SetDefault(previousLogger)
+				previousOutput, previousFlags := log.Writer(), log.Flags()
+				log.SetOutput(&output)
+				log.SetFlags(0)
+				defer func() {
+					log.SetOutput(previousOutput)
+					log.SetFlags(previousFlags)
+				}()
 
 				ctx := context.Background()
 				if tt.incoming != nil {
@@ -79,31 +83,15 @@ func TestLoggingInterceptor(t *testing.T) {
 					t.Errorf("handler calls = %d, want 1", calls)
 				}
 
-				decoder := json.NewDecoder(&output)
-				var record map[string]any
-				if err := decoder.Decode(&record); err != nil {
-					t.Fatalf("decode JSON log: %v", err)
+				want := fmt.Sprintf("%s: gRPC request %q for %s completed with %s in 17 ms", tt.wantLevel, tt.wantRequestID, method, tt.wantCode)
+				if tt.err != nil {
+					want += fmt.Sprintf("; error: %q", tt.err.Error())
 				}
-				for key, want := range map[string]any{
-					"msg": "gRPC request completed", "level": tt.wantLevel,
-					"request_id": tt.wantRequestID, "method": method,
-					"code": tt.wantCode.String(), "dur_ms": float64(17),
-				} {
-					if record[key] != want {
-						t.Errorf("log field %q = %v, want %v", key, record[key], want)
-					}
+				if got := output.String(); got != want+"\n" {
+					t.Errorf("log = %q, want %q", got, want+"\n")
 				}
-				loggedError, hasError := record["error"]
-				if tt.err == nil {
-					if hasError {
-						t.Errorf("successful call logged error: %v", loggedError)
-					}
-				} else if !hasError || loggedError != tt.err.Error() {
-					t.Errorf("logged error = %v, want %q", loggedError, tt.err.Error())
-				}
-				var extra any
-				if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
-					t.Errorf("expected exactly one log record, got extra %v and error %v", extra, err)
+				if strings.Count(output.String(), "\n") != 1 {
+					t.Error("expected exactly one log line")
 				}
 			})
 		})

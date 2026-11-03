@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"log/slog"
+	"log"
 	"time"
 )
 
@@ -19,7 +19,7 @@ func runCompensations(ctx context.Context, repository reservationReconciler, rel
 			return
 		case <-ticker.C:
 			if err := repository.ReconcileReservations(ctx, release); err != nil && ctx.Err() == nil {
-				slog.WarnContext(ctx, "reservation reconciliation failed", "error", err)
+				log.Printf("WARN: reservation reconciliation failed: %v", err)
 			}
 		}
 	}
