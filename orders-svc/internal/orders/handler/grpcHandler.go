@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"marketplace/gen/orderspb"
 	"marketplace/orders-svc/internal/orders/dto"
 	"marketplace/orders-svc/internal/orders/service"
@@ -53,6 +54,13 @@ func (s *OrdersServer) Create(
 		req.GetIdempotencyKey(),
 	)
 	if err != nil {
+		requestID := ""
+		if incoming, ok := metadata.FromIncomingContext(ctx); ok {
+			if values := incoming.Get("x-request-id"); len(values) > 0 {
+				requestID = values[0]
+			}
+		}
+		slog.WarnContext(ctx, "create order failed", "request_id", requestID, "error", err)
 		return nil, toGRPCError(err)
 	}
 
