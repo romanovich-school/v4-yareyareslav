@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"errors"
+	"log"
 	"marketplace/gen/orderspb"
 	"marketplace/orders-svc/internal/orders/dto"
 	"marketplace/orders-svc/internal/orders/service"
@@ -53,6 +54,7 @@ func (s *OrdersServer) Create(
 		req.GetIdempotencyKey(),
 	)
 	if err != nil {
+		log.Printf("WARN: create order failed for request %q; error: %q", requestID(ctx), err.Error())
 		return nil, toGRPCError(err)
 	}
 

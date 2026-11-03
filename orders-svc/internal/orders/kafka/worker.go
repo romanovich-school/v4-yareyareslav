@@ -2,7 +2,7 @@ package kafka
 
 import (
 	"context"
-	"log/slog"
+	"log"
 	"marketplace/orders-svc/internal/orders/model"
 	"time"
 )
@@ -42,7 +42,7 @@ func (w *KafkaWorker) Start(ctx context.Context) {
 				if ctx.Err() != nil {
 					return
 				}
-				slog.WarnContext(ctx, "outbox publication failed", "error", err)
+				log.Printf("WARN: outbox publication failed: %v", err)
 			}
 		}
 	}
