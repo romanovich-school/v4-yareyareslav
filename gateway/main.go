@@ -95,6 +95,7 @@ func run(ctx context.Context) (runErr error) {
 	if err != nil {
 		return fmt.Errorf("create catalog client: %w", err)
 	}
+	catalogConn.Connect()
 	defer func() {
 		if err := catalogConn.Close(); err != nil {
 			runErr = errors.Join(runErr, fmt.Errorf("close catalog client: %w", err))
@@ -107,6 +108,7 @@ func run(ctx context.Context) (runErr error) {
 	if err != nil {
 		return fmt.Errorf("create orders client: %w", err)
 	}
+	ordersConn.Connect()
 	defer func() {
 		if err := ordersConn.Close(); err != nil {
 			runErr = errors.Join(runErr, fmt.Errorf("close orders client: %w", err))
