@@ -3,6 +3,7 @@ package healthz
 import (
 	"context"
 	"log"
+	"log/slog"
 	"marketplace/gateway/pkg/requestid"
 	"marketplace/gateway/pkg/response"
 	"marketplace/gen/catalogpb"
@@ -11,8 +12,15 @@ import (
 	"time"
 
 	"github.com/go-chi/chi"
+	"google.golang.org/grpc"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 )
+
+type Microservice struct {
+	name    string
+	service string
+	client  healthpb.HealthClient
+}
 
 type HealthzHandler struct {
 	catalog healthpb.HealthClient
@@ -33,15 +41,29 @@ func (h *HealthzHandler) CheckHealthz(w http.ResponseWriter, r *http.Request) {
 		serving bool
 	}
 	results := make(chan result, 2)
-	for _, backend := range []struct {
-		name, service string
-		client        healthpb.HealthClient
-	}{
+	var microserviceList = []Microservice{
 		{"catalog-svc", catalogpb.CatalogService_ServiceDesc.ServiceName, h.catalog},
 		{"orders-svc", orderspb.OrdersService_ServiceDesc.ServiceName, h.orders},
-	} {
+	}
+
+	for _, backend := range microserviceList {
 		go func() {
-			reply, err := backend.client.Check(ctx, &healthpb.HealthCheckRequest{Service: backend.service})
+			reply, err := backend.client.Check(ctx, &healthpb.HealthCheckRequest{Service: backend.service}, grpc.WaitForReady(true))
+			if err != nil {
+				slog.ErrorContext(ctx, "gRPC health check failed",
+					"request_id", requestid.ID(ctx),
+					"backend", backend.name,
+					"service", backend.service,
+					"error", err,
+				)
+			} else if reply.GetStatus() != healthpb.HealthCheckResponse_SERVING {
+				slog.WarnContext(ctx, "gRPC backend is not serving",
+					"request_id", requestid.ID(ctx),
+					"backend", backend.name,
+					"service", backend.service,
+					"status", reply.GetStatus().String(),
+				)
+			}
 			results <- result{backend.name, err == nil && reply.GetStatus() == healthpb.HealthCheckResponse_SERVING}
 		}()
 	}
