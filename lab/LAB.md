@@ -138,7 +138,7 @@ stock + sold:      1000
 Заказы создавались, так как kafka работает за счёт фонового воркера, публикующего события из outbox. Sold двигается, когда события из Kafka попадают в Catalog. Пока Kafka мертва, фоновый воркер не может опубликовать события из outbox.Если бы publish стоял прямо в хэндлере без фонового воркера, в лучшем случае увеличилась юы задержка, в худшем - всё упало.
 
 5. Появились ли дубли после SIGKILL? Если нет — где именно должен упасть процесс, чтобы они появились? Почему `sold` всё равно сошёлся со `stock`?
-После SIGKILL дублей нет, так как эту проблему решает outbox pattern. Если бы не было промежуточного звена в виде outbox таблицы, то в теории заказ мог быть не записан в таблицу, но при этом опубликован в Kafka. Sold сошелся со stock, так как если orders упал во время выполнения запроса, транзакция полностью откатится назад и не запишет событие в outbox.
+После SIGKILL дублей нет, так как эту проблему решает дедупликация на стороне консьюмера. Чтобы произошла дупликация события в Kafka, сервис должен упасть в момент, когда воркер забрал запись из outbox и при этом orders-svc упал до изменения published_at. Дедупликация в данном случае делает записи об обработанных событиях на стороне потребителя, поэтому если потребитель считывает из Kafka повтороно то же событие, то processed_events позволяет удостовериться, что событие уже обработано. 
 
 6. Что даёт `FOR UPDATE SKIP LOCKED` в воркере, если запустить orders-svc в двух экземплярах? Что будет без него?
 Это дает возможность конкурентной обработки таблицы outbox воркерами. FOR UPDATE SKIP LOCKED позволяет пропускать при обработке записи, которые уже были заблокированы другим воркером. Без FOR UPDATE SKIP LOCKED второй воркер будет ждать, пока первый не освободит запись.
@@ -182,38 +182,194 @@ curl -s -X POST $GATEWAY_URL/orders -H "Authorization: Bearer $TOKEN" \
 make logs | grep "$RID"
 ```
 
+Замеры выполнены на локальном compose. Для повторения на Windows из корня репозитория:
+
+```powershell
+docker compose -f compose/docker-compose.yml --profile services up -d --build
+./lab/4_observability.ps1
+```
+
+Скрипт сохраняет исходные логи и результаты в lab/results/4, останавливает catalog во время нагрузки, отдельно останавливает Kafka и затем возвращает сервисы в работу. Время в исходных логах ниже — UTC, московское время на три часа больше.
+
+Один заказ с заданным X-Request-ID:
+
+```
+request_id=7c3da814-1517-459a-9b19-594696380138
+status=201
+{"id":"a55509b9-0bee-44f4-b4b3-74227ef0948b","buyer_id":"29f706b9-9313-435b-99f3-fa624af0fe15","listing_id":"4d00685a-bc0e-4b83-8b66-1387432d7dd1","qty":1,"created_at":"2026-11-05T12:24:19.905313Z"}
+```
+
+Строки трёх сервисов из trace.log (выбраны по этому request_id):
+
+```
+catalog-svc: {"time":"2026-11-05T12:24:19.910936735Z","level":"INFO","msg":"gRPC request completed","request_id":"7c3da814-1517-459a-9b19-594696380138","method":"/marketplace.catalog.v1.CatalogService/Reserve","code":"OK","dur_ms":4}
+orders-svc: 2026/11/05 12:24:19 INFO: gRPC request "7c3da814-1517-459a-9b19-594696380138" for /marketplace.orders.v1.OrdersService/Create completed with OK in 36 ms
+gateway: {"time":"2026-11-05T12:24:19.93561889Z","level":"INFO","msg":"HTTP request","request_id":"7c3da814-1517-459a-9b19-594696380138","method":"POST","path":"/orders","status":201,"dur_ms":37.3219,"remote_addr":"172.19.0.1:33076"}
+```
+
+По одному идентификатору виден путь gateway → orders → catalog. Строки завершения появляются в обратном порядке вложенных вызовов: Reserve занял 4 мс, Create — 36 мс, HTTP-запрос — 37,3 мс.
+
 Дальше сложнее. Дай нагрузку `lab/load -mode orders` на 30 секунд и ответь, показав команды и вывод:
+
+Для замера добавил в lab/load параметр duration. После 30 секунд он прекращает запускать новые запросы и ждёт уже начатые; регистрация пользователей и создание листинга в эти 30 секунд не входят.
+
+```bash
+make load ARGS="-mode orders -n 1000000 -c 10 -buyers 1 -stock 1000000 -duration 30s"
+```
+
+На Windows скрипт запускает собранную версию этой утилиты с теми же параметрами. На восьмой секунде начинается остановка catalog, на восемнадцатой — запуск:
+
+```bash
+docker compose -f compose/docker-compose.yml stop -t 0 catalog-svc
+docker compose -f compose/docker-compose.yml start catalog-svc
+```
+
+Фактические границы нагрузки и остановки:
+
+```
+load started at 2026-11-05T12:24:21.219069Z
+stop_started=2026-11-05T12:24:29.2209813Z
+catalog_stopped=2026-11-05T12:24:30.0247024Z
+catalog_restarted=2026-11-05T12:24:41.1119229Z
+load finished at 2026-11-05T12:24:51.3444076Z
+
+10287 requests in 30.126s  (341 req/s)
+p50 20.1ms   p95 78.3ms   p99 169.7ms   max 746.1ms
+  201            3603  (35.0%)
+  503            6684  (65.0%)
+```
+
+Логи сохранены через `docker compose logs --no-color --no-log-prefix --since ... --until ...` отдельно для каждого сервиса. Окно сбора 12:24:20.9826423Z–12:24:51.3772193Z включает подготовку и завершение нагрузки; фильтрация ниже оставляет только POST /orders. Других клиентов во время замера не было.
 
 1. Сколько заказов за это время получили `code=Unavailable` от catalog? Для gateway это одна строка с `jq`. Напиши её.
 
 В моей реализации gateway пишет в лог HTTP-статус, но не исходный gRPC-код. Поэтому могу посчитать POST /orders с 503, но в это число попадут и Unavailable, и DeadlineExceeded. Также по этой строке нельзя понять, какой именно сервис был недоступен. Команда для сохранённого лога gateway за нужные 30 секунд:
 
 ```bash
-jq -s '[.[] | select(.msg == "HTTP request" and .method == "POST" and .path == "/orders" and .status == 503)] | length' gateway-30s.log
+jq -s '[.[] | select(.msg == "HTTP request" and .method == "POST" and .path == "/orders" and .status == 503)] | length' lab/results/4/gateway-30s.log
 ```
 
-Точное количество Unavailable от catalog из текущего лога gateway получить нельзя. Для этого нужно логировать исходный код и сервис, от которого пришла ошибка, либо сопоставлять записи orders и catalog по request_id. Замер за 30 секунд здесь не выполнен, поэтому числового результата нет.
+На Windows jq не установлен, поэтому выполнил эквивалентную фильтрацию полей через PowerShell:
+
+```powershell
+@(Get-Content lab/results/4/gateway-30s.log | ForEach-Object { $_ | ConvertFrom-Json } | Where-Object { $_.msg -eq 'HTTP request' -and $_.method -eq 'POST' -and $_.path -eq '/orders' -and $_.status -eq 503 }).Count
+```
+
+```
+6684
+```
+
+Затем сопоставил request_id этих ответов с логами orders, где одновременно есть завершение Create с Unavailable и ошибка `reserve listing: rpc error: code = Unavailable`. Сводка из скрипта:
+
+```
+http_orders=10287
+http_201=3603
+http_503=6684
+catalog_unavailable_unique=6684
+matched_http503_unavailable=6684
+orders_deadline_exceeded=0
+```
+
+В этом прогоне все 6684 ответа 503 связаны с недоступностью catalog. Из одного gateway-лога установить источник и gRPC-код всё равно нельзя: равенство подтверждено сопоставлением, а не предположением, что любой 503 означает Unavailable от catalog.
 
 2. Тот же вопрос для orders-svc. Что пришлось делать с `grep`/`awk`, и что случится с твоей командой, если коллега поменяет текст сообщения или добавит поле в середину строки?
 
-В orders-svc нужно искать текст завершения Create с кодом Unavailable и считать уникальные request_id. Это позволяет не посчитать один запрос несколько раз из-за дополнительных WARN:
+В orders-svc искал завершение Create с кодом Unavailable и текстом ошибки Reserve, затем считал уникальные request_id. Это позволяет не посчитать один запрос несколько раз из-за дополнительных WARN:
 
 ```bash
-grep -E 'for /marketplace\.orders\.v1\.OrdersService/Create completed with Unavailable' orders-30s.log \
-  | awk -F '"' '{print $2}' | sort -u | wc -l
+grep -E 'for /marketplace\.orders\.v1\.OrdersService/Create completed with Unavailable.*reserve listing: rpc error: code = Unavailable' lab/results/4/orders-svc-30s.log \
+  | cut -d '"' -f 2 | sort -u | wc -l
 ```
 
-Команда зависит от текста сообщения и расположения кавычек. Если коллега поменяет формат, она может перестать находить ошибки или начнёт доставать другое поле. В JSON я обращался бы к полям по имени, поэтому перестановка полей ничего бы не сломала. При этом код завершения Create сам по себе ещё не доказывает, что ошибка пришла именно от catalog: нужно посмотреть текст ошибки с reserve listing или добавить отдельное поле с источником ошибки.
+```
+6684
+```
+
+Команду выполнил через Git Bash. Здесь cut по кавычкам заменяет `awk -F '"' '{print $2}'`: оба варианта извлекают request_id. Пример найденной строки:
+
+```
+2026/11/05 12:24:29 INFO: gRPC request "dc49acba-53f6-4a00-b37f-3a94e5935ac2" for /marketplace.orders.v1.OrdersService/Create completed with Unavailable in 22 ms; error: "rpc error: code = Unavailable desc = create order: reserve listing: rpc error: code = Unavailable desc = connection error: desc = \"transport: Error while dialing: dial tcp 172.19.0.5:50051: connect: connection refused\""
+```
+
+Команда зависит от текста сообщения и расположения кавычек. Если коллега поменяет формат, она может перестать находить ошибки или начнёт доставать другое поле. В JSON я обращался бы к полям по имени, поэтому перестановка полей ничего бы не сломала. Код завершения Create сам по себе не доказывает источник ошибки, поэтому в фильтр включён текст reserve listing.
 
 3. Найди в логах orders-svc, сколько раз воркер outbox отправлял батч, пока Kafka была остановлена, и медиану размера батча. Сколько времени ушло?
 
-В моей реализации воркер пишет только ошибку outbox publication failed. Успешные отправки и количество событий в батче не логируются, поэтому медиану размера батча из этих логов посчитать нельзя. Лимит 100 в коде означает максимальный размер, а не фактическое количество событий. Количество записей об ошибках за период остановки Kafka можно получить так:
+До замера воркер писал только outbox publication failed, поэтому размер батча восстановить было нельзя. Для измерения добавил текстовый лог каждой завершённой попытки WriteMessages: batch_size, dur_ms, success и error. Это размер фактически переданного в publisher батча; лог успеха публикации ещё не означает COMMIT отметки published_at.
+
+Перед остановкой Kafka дождался пустой outbox. Затем остановил Kafka, создал 300 заказов и собирал логи 30 секунд:
 
 ```bash
-grep -c 'WARN: outbox publication failed:' orders-kafka-down.log
+docker compose -f compose/docker-compose.yml stop kafka
+make load ARGS="-mode orders -n 300 -c 20 -buyers 1 -stock 1000"
 ```
 
-Это число ошибок воркера, а не число успешно отправленных батчей. Чтобы ответить полностью, нужно логировать каждую попытку отправки: batch_size, dur_ms и результат. Время поиска я отдельно не засекал, поэтому указывать его было бы неправильно.
+```
+pending=0
+since=2026-11-05T12:27:10.1051600Z
+until=2026-11-05T12:27:40.1767068Z
+seconds=30.0715468
+
+300 requests in 1.791s  (167 req/s)
+p50 83.7ms   p95 543.4ms   p99 617ms   max 646.5ms
+  201             300  (100.0%)
+```
+
+Примеры строк из orders-svc-kafka-down.log:
+
+```
+2026/11/05 12:27:13 INFO: outbox publish attempt batch_size=3 dur_ms=1687 success=false error="context deadline exceeded"
+2026/11/05 12:27:15 INFO: outbox publish attempt batch_size=100 dur_ms=1998 success=false error="context deadline exceeded"
+2026/11/05 12:27:17 INFO: outbox publish attempt batch_size=100 dur_ms=1999 success=false error="context deadline exceeded"
+```
+
+Подсчёт попыток и медианы в PowerShell:
+
+```powershell
+$timer = [Diagnostics.Stopwatch]::StartNew()
+$log = Get-Content lab/results/4/orders-svc-kafka-down.log
+$attempts = @($log | Where-Object { $_ -match 'outbox publish attempt batch_size=' })
+$sizes = @($attempts | ForEach-Object { if ($_ -match 'batch_size=(\d+)') { [int]$Matches[1] } } | Sort-Object)
+$middle = [int][Math]::Floor($sizes.Count / 2)
+$median = if ($sizes.Count % 2) { $sizes[$middle] } else { ($sizes[$middle - 1] + $sizes[$middle]) / 2 }
+$timer.Stop()
+$attempts.Count
+$median
+$timer.Elapsed.TotalMilliseconds
+```
+
+Сводка скрипта, включающая также подсчёт success и WARN:
+
+```
+outbox_attempts=14
+outbox_failed=14
+outbox_success=0
+outbox_warnings=14
+outbox_batch_sizes=3,100,100,100,100,100,100,100,100,100,100,100,100,100
+outbox_batch_median=100
+outbox_search_ms=53.6
+```
+
+За окно завершились 14 попыток публикации, все с ошибкой; успешно отправленных батчей — 0. Медиана размера попытки — 100 событий. Первый батч содержал только 3 события, остальные заказы ещё создавались. Повторные попытки могли содержать те же события, поэтому суммировать размеры батчей как число уникальных заказов нельзя. Поиск и подсчёт по сохранённому логу заняли 53,6 мс; это время выполнения команд, не время написания фильтра.
+
+Перед восстановлением Kafka в outbox оставалось 300 неопубликованных событий. После `docker compose -f compose/docker-compose.yml start kafka catalog-svc` очередь дошла до нуля:
+
+```
+pending=0
+drain_seconds=0.650327
+```
+
+Дренаж измерен от начала опроса после завершения команды start до первого нуля. Это время публикации outbox, а не применения событий в catalog: consumer догоняет Kafka отдельно.
+
+После обработки событий проверил листинг через gateway:
+
+```bash
+curl -s http://localhost:8080/listings/65db6398-89b2-4c87-843b-e0f2c39ae489
+```
+
+```json
+{"id":"65db6398-89b2-4c87-843b-e0f2c39ae489","title":"load-hot","price":10.00,"stock":700,"sold":300,"seller_id":"62977c1d-f9e0-478c-8685-23147c1713c2","created_at":"2026-11-05T12:27:11.486534Z"}
+```
 
 4. Перепиши (у себя в отчёте, не в коде) три строки логов orders-svc в JSON. Какие поля стали бы обязательными и почему `request_id` среди них?
 
