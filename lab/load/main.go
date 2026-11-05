@@ -35,10 +35,14 @@ func main() {
 	mode := flag.String("mode", "get", "get | orders")
 	n := flag.Int("n", 2000, "total requests")
 	c := flag.Int("c", 20, "concurrency")
+	duration := flag.Duration("duration", 0, "stop starting requests after this duration; 0 uses only -n")
 	listings := flag.Int("listings", 100, "get: how many listings to create and read")
 	stock := flag.Int("stock", 1000, "orders: stock of the single listing")
 	buyers := flag.Int("buyers", 10, "orders: how many buyer accounts")
 	flag.Parse()
+	if *n <= 0 || *c <= 0 || *buyers <= 0 || *listings <= 0 || *duration < 0 {
+		fail("n, c, buyers and listings must be positive; duration must be non-negative")
+	}
 	*base = strings.TrimRight(*base, "/")
 
 	if err := ping(*base); err != nil {
@@ -53,7 +57,7 @@ func main() {
 			ids = append(ids, createListing(*base, seller, fmt.Sprintf("load-%d", i), 10))
 		}
 		fmt.Printf("created %d listings, firing %d GETs with concurrency %d\n", len(ids), *n, *c)
-		run(*n, *c, func(r *rand.Rand) result {
+		run(*n, *c, *duration, func(r *rand.Rand) result {
 			id := ids[r.IntN(len(ids))]
 			t0 := time.Now()
 			resp, err := client.Get(*base + "/listings/" + id)
@@ -71,7 +75,7 @@ func main() {
 			toks = append(toks, register(*base, "buyer"))
 		}
 		fmt.Printf("listing %s stock=%d, firing %d POST /orders with concurrency %d\n", id, *stock, *n, *c)
-		run(*n, *c, func(r *rand.Rand) result {
+		run(*n, *c, *duration, func(r *rand.Rand) result {
 			tok := toks[r.IntN(len(toks))]
 			t0 := time.Now()
 			status, _, err := do("POST", *base+"/orders", tok, map[string]any{"listing_id": id, "qty": 1})
@@ -90,7 +94,7 @@ type result struct {
 	err    error
 }
 
-func run(n, c int, one func(*rand.Rand) result) {
+func run(n, c int, duration time.Duration, one func(*rand.Rand) result) {
 	var (
 		mu       sync.Mutex
 		durs     = make([]time.Duration, 0, n)
@@ -99,13 +103,14 @@ func run(n, c int, one func(*rand.Rand) result) {
 		wg       sync.WaitGroup
 	)
 	start := time.Now()
+	fmt.Printf("load started at %s\n", start.UTC().Format(time.RFC3339Nano))
 	for w := range c {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			r := rand.New(rand.NewPCG(uint64(w), uint64(time.Now().UnixNano())))
 			for {
-				if next.Add(1) > int64(n) {
+				if (duration > 0 && time.Since(start) >= duration) || next.Add(1) > int64(n) {
 					return
 				}
 				res := one(r)
@@ -125,6 +130,11 @@ func run(n, c int, one func(*rand.Rand) result) {
 	}
 	wg.Wait()
 	total := time.Since(start)
+	fmt.Printf("load finished at %s\n", time.Now().UTC().Format(time.RFC3339Nano))
+	if len(durs) == 0 {
+		fmt.Println("0 requests")
+		return
+	}
 
 	sort.Slice(durs, func(i, j int) bool { return durs[i] < durs[j] })
 	p := func(q float64) time.Duration { return durs[int(float64(len(durs)-1)*q)] }
