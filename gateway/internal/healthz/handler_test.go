@@ -3,6 +3,7 @@ package healthz
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"marketplace/gateway/pkg/requestid"
 	"marketplace/gateway/pkg/response"
 	"marketplace/gen/catalogpb"
@@ -16,7 +17,9 @@ import (
 
 	"github.com/go-chi/chi"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/backoff"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials/insecure"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/metadata"
@@ -155,5 +158,49 @@ func TestHealthDeadline(t *testing.T) {
 	assertUnavailable(t, recorder)
 	if elapsed := time.Since(started); elapsed > 5*time.Second {
 		t.Errorf("health took %s", elapsed)
+	}
+}
+
+func TestHealthWaitsForBackendConnection(t *testing.T) {
+	listener := bufconn.Listen(1 << 20)
+	server := grpc.NewServer()
+	healthpb.RegisterHealthServer(server, &healthServer{check: func(context.Context, *healthpb.HealthCheckRequest) (*healthpb.HealthCheckResponse, error) {
+		return &healthpb.HealthCheckResponse{Status: healthpb.HealthCheckResponse_SERVING}, nil
+	}})
+	go func() { _ = server.Serve(listener) }()
+	t.Cleanup(func() { server.Stop(); _ = listener.Close() })
+
+	var available atomic.Bool
+	conn, err := grpc.NewClient("passthrough:///recovering-health-test",
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithConnectParams(grpc.ConnectParams{
+			Backoff:           backoff.Config{BaseDelay: 200 * time.Millisecond, Multiplier: 1, MaxDelay: 200 * time.Millisecond},
+			MinConnectTimeout: time.Second,
+		}),
+		grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
+			if !available.Load() {
+				return nil, errors.New("backend is starting")
+			}
+			return listener.Dial()
+		}),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+	conn.Connect()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	for state := conn.GetState(); state != connectivity.TransientFailure; state = conn.GetState() {
+		if !conn.WaitForStateChange(ctx, state) {
+			t.Fatal("connection did not enter transient failure")
+		}
+	}
+
+	time.AfterFunc(100*time.Millisecond, func() { available.Store(true) })
+	client := healthpb.NewHealthClient(conn)
+	recorder := healthRequest(client, client)
+	if recorder.Code != http.StatusOK || recorder.Body.String() != "ok" {
+		t.Fatalf("status %d, body %s", recorder.Code, recorder.Body.String())
 	}
 }

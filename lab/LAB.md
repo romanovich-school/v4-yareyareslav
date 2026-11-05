@@ -1,28 +1,20 @@
 # Лабораторная — отчёт
 
-Стек для замеров: локальный compose, 26.10.2026. Railway не использовался.
-Окружение: Windows, Go 1.26.3, Docker Engine 29.7.2, gateway на
-`http://localhost:8080`. Временные метки логов приведены в UTC (МСК = UTC+3).
+Заполняется тобой. Аналог `explain/EXPLAIN.md` из v3: там ты смотрел на планы
+запросов, здесь — на поведение распределённой системы под нагрузкой и при отказах.
+Всё наблюдается снаружи, через gateway: `lab/load` бьёт в HTTP, остальное — `psql`,
+`redis-cli`, Kafka-скрипты из контейнера и кнопки Railway.
 
-Нагрузка создавалась утилитой `lab/load` через HTTP. Redis CLI и psql вызывались
-в контейнерах, Kafka CLI — из `apache/kafka:3.9.2` в сети `compose_default`.
-Команды Bash ниже показывают сценарии повторения с теми же параметрами.
-На Windows утилита предварительно собиралась и запускалась напрямую:
+Что должно быть в каждом разделе: команда, сырой вывод (в блоках ```` ``` ````),
+одна-две фразы, что ты в нём увидел. Вопросы в конце каждого раздела — ответы словами.
 
-```powershell
-go -C lab/load build -buildvcs=false -o "$env:TEMP\marketplace-lab-load.exe" .
-& "$env:TEMP\marketplace-lab-load.exe" -base http://localhost:8080 -mode get -n 5000 -c 50 -listings 100
-```
-
-`-buildvcs=false` потребовался из-за проверки владельца репозитория Git в среде
-исполнения. Неудачные прогоны приведены вместе с повторными. Код сервисов
-во время лабораторной не менялся.
+Стек для замеров: *локальный compose*
 
 ---
 
 ## 1. Кэш: hit rate и хвост задержек
 
-При работающем Redis выполнено 5000 GET по 100 новым листингам:
+Redis работает. Прогрей и нагрузи:
 
 ```bash
 make load ARGS="-mode get -n 5000 -c 50 -listings 100"
@@ -31,124 +23,85 @@ make load ARGS="-mode get -n 5000 -c 50 -listings 100"
 Вывод `load` (распределение `200 HIT` / `200 MISS`, p50/p95/p99):
 
 ```
-5000 requests in 9.074s  (551 req/s)
-p50 55.4ms   p95 285.2ms   p99 822.9ms   max 1.0665s
-  200 HIT        4874  (97.5%)
-  200 MISS        126  (2.5%)
+5000 requests in 2.213s  (2259 req/s)
+p50 15.9ms   p95 60.1ms   p99 125.4ms   max 216.1ms
+  200 HIT        4885  (97.7%)
+  200 MISS        115  (2.3%)
 ```
 
-Статистика Redis до и после нагрузки:
-
-```bash
-docker compose -f compose/docker-compose.yml exec -T redis redis-cli INFO stats | grep keyspace
-```
+`redis-cli -u redis://localhost:6380 INFO stats | grep keyspace` до и после:
 
 ```
-До:
-keyspace_hits:0
-keyspace_misses:0
-
-После:
-keyspace_hits:4874
-keyspace_misses:126
+keyspace_hits:4885
+keyspace_misses:115
 ```
 
-При остановленном Redis повторена нагрузка с теми же параметрами:
-
-```bash
-docker compose -f compose/docker-compose.yml stop redis
-make load ARGS="-mode get -n 5000 -c 50 -listings 100"
-docker compose -f compose/docker-compose.yml start redis
-```
+Теперь останови Redis (`docker compose -f compose/docker-compose.yml stop redis`,
+на Railway — Stop у сервиса redis) и повтори ту же нагрузку:
 
 ```
-5000 requests in 4.911s  (1018 req/s)
-p50 32.1ms   p95 162.5ms   p99 337.2ms   max 753.1ms
+(вывод: должны быть 200 BYPASS и другие перцентили)
+5000 requests in 2.512s  (1990 req/s)
+p50 20.2ms   p95 53.8ms   p99 93.5ms   max 109.9ms
   200 BYPASS     5000  (100.0%)
 ```
 
-Redis после проверки запущен. Деградация прошла без HTTP-ошибок: все 5000
-запросов вернули 200 BYPASS.
+Верни Redis.
 
-**Ответы.**
+**Вопросы.**
+1. Какой hit rate получился на 5000 запросов по 100 ключам с TTL 30 с? Почему не 99%?
+Так как кэшу потребовалось время для прогрева. Также скорее всего не все запросы попали в кэш после прогрева. 
 
-1. **Hit rate — 97,48%.** Утилита при каждом запуске создаёт новые 100 листингов
-   и отдельно не прогревает все ключи. Даже при одном MISS на ключ максимум
-   составит `(5000−100)/5000 = 98%`, а не 99%. Дополнительные 26 MISS согласуются
-   с параллельными чтениями холодных ключей: несколько запросов успевают пройти
-   в БД до заполнения кэша. TTL — 30 секунд; истечений ключей за этот прогон
-   Redis не зарегистрировал.
-2. **Без Redis p50 уменьшился на 23,3 мс, p99 — на 485,7 мс.** Это результат
-   одного последовательного замера на локальной VM. Порядок запусков, прогрев
-   соединений и нагрузка окружения не контролировались, поэтому он не доказывает,
-   что Redis в целом замедляет систему. p50 описывает типичный запрос, p99 — хвост
-   задержек. Для пользователя важны оба; p99 особенно существенен при оценке SLO
-   и экранов с несколькими зависимыми запросами.
-3. **Возможны до 100 чтений Postgres на один холодный ключ.** Это cache stampede:
-   координации между MISS в реализации нет. Singleflight объединяет запросы
-   внутри процесса, распределённый lock координирует экземпляры сервиса.
-   Jitter TTL разносит истечения разных ключей, но сам по себе не устраняет
-   штурм одного явно инвалидированного ключа. Это объяснение поведения кода,
-   отдельный замер 100 GET на один ключ не выполнялся.
+2. Насколько изменились p50 и p99 без Redis? Что из этого важнее для пользователя и почему?
+p50 с кэшом чуть меньше, чем p50 без кэша. Обратная ситуация с p99. Это означает, что время самых долгих запросов увеличилось, при этом среднее время запросов практически либо незначительно уменьшилось. Увеличение максимального времени запросов связано с тем, что во время прогрева требовалось дополнительно ходить в кэш для записи. Для пользователей важнее, что среднее время запросов уменьшилось, так как большинство их запросов будет проходить именно за это время.
+
+3. 100 одновременных GET на один только что инвалидированный ключ — что произойдёт с Postgres? Как называется эффект и как его гасят (single-flight, lock, jitter TTL)?
+В моей реализации кода защиты не предусмотрена, поэтому в зависимости от скорости выполнения горутин до 100 запросов уйдут в Postgres. Стратегия single-flight подразумевает объединение запросов за одинаковой сущностью в один пулл с ожиданием, пока первый запрос из этого пула добавит в кеш этот ключ. После этого оставшиеся запросы будут проходить в кеш без постоянных отдельных запросов в БД.
 
 ---
 
 ## 2. Outbox: отказ Kafka и at-least-once
 
-Kafka остановлена, затем созданы 300 заказов:
+Останови Kafka. Создай 300 заказов:
 
 ```bash
 docker compose -f compose/docker-compose.yml stop kafka
 make load ARGS="-mode orders -n 300 -c 20 -stock 1000"
 ```
 
-Вывод `load` при остановленной Kafka:
+Вывод `load` (все 201, задержки такие же, как с живой Kafka?):
+Все 201, так как Kafka работает за счёт фонового воркера, публикующего события из outbox. Задержка без Kafka слегка растет, но не сильно.
 
 ```
-listing 0646b0bc-4b1f-4b83-b937-b26a72b114c9 stock=1000, firing 300 POST /orders with concurrency 20
+Без Kafka:
+300 requests in 1.781s  (168 req/s)
+p50 97.2ms   p95 257ms   p99 300.7ms   max 356.9ms
+  201             300  (100.0%)
 
-300 requests in 632ms  (475 req/s)
-p50 34.1ms   p95 79.2ms   p99 105.8ms   max 119.2ms
+С Kafka:
+300 requests in 1.517s  (198 req/s)
+p50 85.8ms   p95 181ms   p99 192.9ms   max 206.2ms
   201             300  (100.0%)
 ```
-
-Все 300 заказов созданы без Kafka. Первый контроль с живой Kafka дал 220 ответов
-201 и 80 ответов 503 из-за DeadlineExceeded при Reserve; повтор после пробного
-успешного заказа дал 300 ответов 201, p50 107.6ms и p99 598.6ms. В повторе топик
-уже имел три партиции вместо одной, поэтому это не чистое сравнение задержек.
 
 Размер очереди: `psql postgres://app:app@localhost:5433/orders -c "select count(*) from outbox where published_at is null"`:
 
 ```
-300
+ count      
+-------
+   300
+(1 row)
 ```
 
-После запуска Kafka измерено время опустошения outbox и схождения sold:
-
-```bash
-docker compose -f compose/docker-compose.yml start kafka
-docker compose -f compose/docker-compose.yml exec -T postgres psql -U app -d orders -At -c "select count(*) from outbox where published_at is null"
-docker compose -f compose/docker-compose.yml exec -T postgres psql -U app -d catalog -At -c "select stock,sold from listings where id='0646b0bc-4b1f-4b83-b937-b26a72b114c9'"
-```
+Подними Kafka, засеки, за сколько очередь дойдёт до нуля, и сравни `sold` у листинга со `stock`:
 
 ```
-listing=0646b0bc-4b1f-4b83-b937-b26a72b114c9
-До восстановления Kafka: stock=700 sold=0
-
-seconds  pending
-0.656    300
-3.266    300
-5.703    300
-6.812      0
-
-После опустошения outbox ещё через 34.704s: stock=700 sold=300
+Время дренажа: 0.926s
+stock/sold: 700/300
 ```
 
-Outbox опустел через 6.812 секунды после команды запуска Kafka. Consumer догнал
-очередь позднее: нулевой outbox ещё не означает, что sold обновлён.
-
-Для проверки дублей запущена новая серия из 300 заказов при живой Kafka,
-orders-svc завершён SIGKILL и запущен снова:
+Теперь дубли. Снова 300 заказов при живой Kafka, но убей orders-svc посреди дренажа
+жёстко, без SIGTERM:
 
 ```bash
 make load ARGS="-mode orders -n 300 -c 20 -stock 1000" &
@@ -156,469 +109,354 @@ sleep 1; docker compose -f compose/docker-compose.yml kill -s SIGKILL orders-svc
 docker compose -f compose/docker-compose.yml start orders-svc
 ```
 
-При фактическом запуске секунда отсчитывалась от начала POST-нагрузки,
-после подготовки аккаунтов. Перед SIGKILL в очереди было 70 записей.
-Сообщения топика прочитаны с начала, подсчитаны копии каждого order_id:
+Посчитай события в топике и уникальные `order_id`:
 
 ```bash
+# В native-образе Kafka нет скриптов, берём их из обычного образа в той же сети compose:
 docker run --rm --network compose_default apache/kafka:3.9.2 /opt/kafka/bin/kafka-console-consumer.sh \
-  --bootstrap-server kafka:9092 --topic order.created --from-beginning --timeout-ms 10000 2>/dev/null \
+  --bootstrap-server kafka:9092 --topic order.created --from-beginning --timeout-ms 5000 2>/dev/null \
   | grep -o '"order_id":"[^"]*"' | sort | uniq -c | sort -rn | head
 ```
 
 ```
-Все серии в топике:
-messages=1118 unique_order_ids=820 duplicate_copies=298
+300 requests in 1.478s
+p50 96.8ms   p95 169.5ms   p99 189.3ms
+201: 240
+503: 60
 
-Примеры order_id с повторами:
-4 c785c249-3348-4d1d-abe1-39c9044994d9
-4 cb2a3587-7bec-4c88-a68e-80dbad863812
-4 35ca8251-cd5c-425e-9616-9f6fca60c4aa
-
-Серия остановки/восстановления Kafka:
-listing=0646b0bc-4b1f-4b83-b937-b26a72b114c9
-messages=598 unique_order_ids=300 max_copies=4
-stock=700 sold=300
-
-Серия SIGKILL orders-svc:
-listing=f6184b2f-63fb-4cfa-8314-c7b243589864
-pending перед SIGKILL=70
-300 requests in 2.05s  (146 req/s)
-p50 102.7ms   p95 261.1ms   p99 374.8ms   max 552.5ms
-  201             300  (100.0%)
-messages=300 unique_order_ids=300
-stock=700 sold=300
+сообщений:           241
+уникальных order_id: 241
+order_id с дублями:    0
+неопубликованных:     0
+stock:              759
+sold:               241
+stock + sold:      1000
 ```
 
-Дублей именно серии SIGKILL не обнаружено. Найденные 298 повторных копий относятся
-к восстановлению Kafka; при этом sold увеличился только на 300.
+**Вопросы.**
+4. Почему заказы создавались при мёртвой Kafka, а `sold` не двигался? Что было бы с `POST /orders`, если бы publish стоял в хендлере?
+Заказы создавались, так как kafka работает за счёт фонового воркера, публикующего события из outbox. Sold двигается, когда события из Kafka попадают в Catalog. Пока Kafka мертва, фоновый воркер не может опубликовать события из outbox.Если бы publish стоял прямо в хэндлере без фонового воркера, в лучшем случае увеличилась юы задержка, в худшем - всё упало.
 
-**Ответы.**
+5. Появились ли дубли после SIGKILL? Если нет — где именно должен упасть процесс, чтобы они появились? Почему `sold` всё равно сошёлся со `stock`?
+После SIGKILL дублей нет, так как эту проблему решает дедупликация на стороне консьюмера. Чтобы произошла дупликация события в Kafka, сервис должен упасть в момент, когда воркер забрал запись из outbox и при этом orders-svc упал до изменения published_at. Дедупликация в данном случае делает записи об обработанных событиях на стороне потребителя, поэтому если потребитель считывает из Kafka повтороно то же событие, то processed_events позволяет удостовериться, что событие уже обработано. 
 
-4. **Заказ и outbox фиксируются одной транзакцией Postgres.** Публикация выполняется
-   отдельным воркером, поэтому HTTP не ждёт Kafka. Пока событие не доставлено
-   consumer, sold не увеличивается. Синхронный publish в хендлере добавил бы
-   ожидание брокера и ошибки/таймауты в POST. Без outbox также остаётся окно между
-   двумя независимыми записями: можно потерять событие или отправить событие
-   о заказе, который не зафиксирован в БД.
-5. **После SIGKILL дублей этой серии не найдено.** Характерное окно дубля — Kafka
-   уже приняла событие, а orders-svc ещё не зафиксировал published_at. Повтор
-   возможен и при неоднозначном результате publish после таймаута, как при
-   восстановлении Kafka в этом замере. Consumer регистрирует event_id в
-   processed_events и увеличивает sold одной транзакцией. Повторная копия
-   не увеличивает sold снова: для 300 уникальных заказов stock=700, sold=300.
-6. **SKIP LOCKED позволяет воркерам брать разные свободные строки.** Если убрать
-   только SKIP LOCKED, сохранив FOR UPDATE, второй воркер будет ждать блокировки,
-   и параллелизм снизится. Если убрать блокировки целиком, воркеры смогут
-   одновременно публиковать одни и те же строки. Два экземпляра orders-svc
-   в этом эксперименте не запускались; ответ основан на SQL воркера.
+6. Что даёт `FOR UPDATE SKIP LOCKED` в воркере, если запустить orders-svc в двух экземплярах? Что будет без него?
+Это дает возможность конкурентной обработки таблицы outbox воркерами. FOR UPDATE SKIP LOCKED позволяет пропускать при обработке записи, которые уже были заблокированы другим воркером. Без FOR UPDATE SKIP LOCKED второй воркер будет ждать, пока первый не освободит запись.
 
 ---
 
 ## 3. Идемпотентность и saga
 
-Выполнены 50 параллельных `POST /orders` от одного покупателя с одним
-`Idempotency-Key` на листинг со stock=1. Потоки синхронизированы барьером перед
-отправкой. Эквивалент команды для повторения: TOKEN — JWT покупателя,
-LISTING_ID — UUID нового листинга со stock=1, оба переданы в окружение Python.
-
-```bash
-TOKEN="$TOKEN" LISTING_ID="$LISTING_ID" python - <<'PY'
-import collections, concurrent.futures, json, os, threading, urllib.error, urllib.request, uuid
-barrier, key = threading.Barrier(50), str(uuid.uuid4())
-body = json.dumps({"listing_id": os.environ["LISTING_ID"], "qty": 1}).encode()
-headers = {"Content-Type": "application/json", "Authorization": "Bearer " + os.environ["TOKEN"], "Idempotency-Key": key}
-def send(_):
-    barrier.wait()
-    req = urllib.request.Request("http://localhost:8080/orders", data=body, headers=headers)
-    try:
-        response = urllib.request.urlopen(req, timeout=15)
-    except urllib.error.HTTPError as error:
-        response = error
-    with response:
-        data = json.load(response)
-        return response.status, response.headers.get("Idempotent-Replayed"), data.get("id")
-with concurrent.futures.ThreadPoolExecutor(max_workers=50) as pool:
-    replies = list(pool.map(send, range(50)))
-print(collections.Counter((status, replay) for status, replay, _ in replies))
-print("unique_order_ids=", len({identifier for _, _, identifier in replies if identifier}))
-PY
-```
+`POST /orders` с одним `Idempotency-Key` 50 раз параллельно (напиши 10 строк на Go
+или `xargs -P`), листинг со `stock=1`:
 
 ```
-Первый прогон:
-201=0  200 с Idempotent-Replayed=true=0  409=0  503=50
-orders=0 stock=1 sold=0
-
-Повторный прогон:
-listing=4b570d04-09df-4445-8ad7-6c1aa403399c
-Idempotency-Key=2763b781-513c-4862-9fe8-8303e6ec9bc9
-201=1  200 с Idempotent-Replayed=true=49  409=0  503=0
-unique_response_order_ids=1
-orders=1 stock=0 sold=1
+50 requests in 572ms
+status 200: 49
+status 201: 1
+200 with Idempotent-Replayed: 49
+409: 0
+unique order IDs: 1
+final stock: 0
 ```
 
-Первый прогон завершился таймаутами и отменами RPC. Повтор подтвердил
-идемпотентность: один заказ и одно списание остатка на 50 запросов.
+**Вопросы.**
+7. Reserve в catalog прошёл, а `INSERT INTO orders` упал. Что со стоком? Как бы ты компенсировал (какой RPC добавить в proto, что делать, если и он упал)?
+Сток уже уменьшился, а заказ не создался. В моей реализации для компенсации есть RPC ReleaseReservation, который возвращает товар по reservation_id. Если он тоже упал, незавершённая saga остаётся в БД и фоновый воркер повторяет компенсацию. Повторный вызов не увеличивает сток второй раз, так как отмена резервирования идемпотентна.
 
-Количество заказов и состояние листинга проверены в БД:
-
-```bash
-docker compose -f compose/docker-compose.yml exec -T postgres psql -U app -d orders -At -c "select count(*) from orders where listing_id='4b570d04-09df-4445-8ad7-6c1aa403399c'"
-docker compose -f compose/docker-compose.yml exec -T postgres psql -U app -d catalog -At -c "select stock,sold from listings where id='4b570d04-09df-4445-8ad7-6c1aa403399c'"
-```
-
-```text
-1
-0|1
-```
-
-**Ответы.**
-
-7. **Остаток уже уменьшен, автоматической компенсации в текущем коде нет.**
-   Нужны идентификатор резерва и идемпотентный RPC наподобие
-   ReleaseReservation(reservation_id), долговечная задача компенсации и повторные
-   попытки. Ошибка компенсации не должна удалять задачу; нужна последующая сверка.
-   Идентификатор резерва нужен и для безопасного повтора Reserve после
-   неоднозначного сетевого ответа. В сценарии аварий и отмен запросов из раздела 4
-   зафиксированы 3282 заказа, а stock уменьшился на 3287: пять резервов остались
-   без заказа даже после полной обработки событий.
-8. **Резервирование ключа до Reserve выбирает один запрос, которому разрешено
-   списывать stock.** Остальные ждут результат и возвращают тот же заказ. Если
-   записывать ключ только после COMMIT, параллельные запросы успеют выполнить
-   несколько Reserve до обнаружения повтора.
-
-Подтверждение расхождения после завершения обработки событий:
-
-```bash
-docker compose -f compose/docker-compose.yml exec -T postgres psql -U app -d orders -At -c "select count(*),sum(qty) from orders where listing_id='5128efd5-d888-4cea-b93d-56a7c6ef1c42'"
-docker compose -f compose/docker-compose.yml exec -T postgres psql -U app -d catalog -At -c "select stock,sold,stock+sold from listings where id='5128efd5-d888-4cea-b93d-56a7c6ef1c42'"
-```
-
-```text
-3282|3282
-996713|3282|999995
-```
-
-Исходный stock был 1 000 000. Из этих агрегатов нельзя установить, на каком
-именно аварийном запросе возник каждый из пяти незавершённых резервов.
+8. Почему ключ идемпотентности резервируется до Reserve, а не записывается после COMMIT?
+Чтобы параллельные запросы с одним ключом не начали резервировать товар одновременно. Первый запрос занимает ключ и создаёт заказ, остальные ждут его результат и возвращают тот же заказ. Если записывать ключ только после COMMIT, несколько запросов могут успеть уменьшить сток до появления записи о ключе.
 
 ---
 
 ## 4. Один заказ в логах трёх сервисов
 
-В проверенной реализации RPC всех трёх сервисов пишутся в JSON через slog.
-Это отличается от условия задания, где orders-svc должен писать текстом через
-log.Printf. Ниже приведено фактическое поведение; сравнение с текстовыми логами
-объяснено отдельно, без выдуманного результата эксперимента.
-
-Для повторения TOKEN — JWT покупателя, LISTING_ID — листинг с доступным остатком.
-Создание заказа и поиск его request_id во всех трёх сервисах:
+gateway и catalog-svc пишут JSON через `slog`, orders-svc пишет текстом через `log.Printf`.
+Задача: по одному `X-Request-ID` собрать путь одного заказа через все три сервиса.
 
 ```bash
 RID=$(uuidgen)
-curl -s -X POST http://localhost:8080/orders -H "Authorization: Bearer $TOKEN" \
+curl -s -X POST $GATEWAY_URL/orders -H "Authorization: Bearer $TOKEN" \
      -H "Idempotency-Key: $(uuidgen)" -H "X-Request-ID: $RID" \
-     -H 'Content-Type: application/json' -d "{\"listing_id\":\"$LISTING_ID\",\"qty\":1}"
-docker compose -f compose/docker-compose.yml --profile services logs \
-  --no-color --no-log-prefix --since 1m gateway orders-svc catalog-svc | grep -F "$RID"
+     -H 'Content-Type: application/json' -d '{"listing_id":"...","qty":1}'
+make logs | grep "$RID"
 ```
 
-В выполненном прогоне HTTP вернул 201, order_id —
-`f0bb2055-eeb5-4b06-aced-04db80dc3609`, request_id —
-`a1ec6f4a-e626-408e-8639-8696ea4c6bbf`. Найдены три строки, по порядку сервисов
-gateway, orders-svc, catalog-svc:
-
-```json
-{"time":"2026-10-26T14:00:49.227689552Z","level":"INFO","msg":"HTTP request","request_id":"a1ec6f4a-e626-408e-8639-8696ea4c6bbf","method":"POST","path":"/orders","status":201,"dur_ms":9.316275,"remote_addr":"172.19.0.1:38980"}
-{"time":"2026-10-26T14:00:49.227356291Z","level":"INFO","msg":"gRPC request completed","request_id":"a1ec6f4a-e626-408e-8639-8696ea4c6bbf","method":"/marketplace.orders.v1.OrdersService/Create","code":"OK","dur_ms":8}
-{"time":"2026-10-26T14:00:49.222837824Z","level":"INFO","msg":"gRPC request completed","request_id":"a1ec6f4a-e626-408e-8639-8696ea4c6bbf","method":"/marketplace.catalog.v1.CatalogService/Reserve","code":"OK","dur_ms":2}
-```
-
-Одинаковый request_id связывает HTTP, создание заказа и резервирование остатка.
-
-### Нагрузка 30 секунд
+Замеры выполнены на локальном compose. Для повторения на Windows из корня репозитория:
 
 ```powershell
-& "$env:TEMP\marketplace-lab-load.exe" -base http://localhost:8080 -mode orders -n 1000000 -c 20 -stock 1000000
+docker compose -f compose/docker-compose.yml --profile services up -d --build
+./lab/4_observability.ps1
 ```
 
-Большое n использовано, чтобы нагрузка не завершилась раньше замера. Генератор
-остановлен через 30.078 секунды после начала POST-нагрузки. Внутри окна:
+Скрипт сохраняет исходные логи и результаты в lab/results/4, останавливает catalog во время нагрузки, отдельно останавливает Kafka и затем возвращает сервисы в работу. Время в исходных логах ниже — UTC, московское время на три часа больше.
+
+Один заказ с заданным X-Request-ID:
+
+```
+request_id=7c3da814-1517-459a-9b19-594696380138
+status=201
+{"id":"a55509b9-0bee-44f4-b4b3-74227ef0948b","buyer_id":"29f706b9-9313-435b-99f3-fa624af0fe15","listing_id":"4d00685a-bc0e-4b83-8b66-1387432d7dd1","qty":1,"created_at":"2026-11-05T12:24:19.905313Z"}
+```
+
+Строки трёх сервисов из trace.log (выбраны по этому request_id):
+
+```
+catalog-svc: {"time":"2026-11-05T12:24:19.910936735Z","level":"INFO","msg":"gRPC request completed","request_id":"7c3da814-1517-459a-9b19-594696380138","method":"/marketplace.catalog.v1.CatalogService/Reserve","code":"OK","dur_ms":4}
+orders-svc: 2026/11/05 12:24:19 INFO: gRPC request "7c3da814-1517-459a-9b19-594696380138" for /marketplace.orders.v1.OrdersService/Create completed with OK in 36 ms
+gateway: {"time":"2026-11-05T12:24:19.93561889Z","level":"INFO","msg":"HTTP request","request_id":"7c3da814-1517-459a-9b19-594696380138","method":"POST","path":"/orders","status":201,"dur_ms":37.3219,"remote_addr":"172.19.0.1:33076"}
+```
+
+По одному идентификатору виден путь gateway → orders → catalog. Строки завершения появляются в обратном порядке вложенных вызовов: Reserve занял 4 мс, Create — 36 мс, HTTP-запрос — 37,3 мс.
+
+Дальше сложнее. Дай нагрузку `lab/load -mode orders` на 30 секунд и ответь, показав команды и вывод:
+
+Для замера добавил в lab/load параметр duration. После 30 секунд он прекращает запускать новые запросы и ждёт уже начатые; регистрация пользователей и создание листинга в эти 30 секунд не входят.
 
 ```bash
-docker compose -f compose/docker-compose.yml stop kafka
-docker compose -f compose/docker-compose.yml kill -s SIGKILL catalog-svc
+make load ARGS="-mode orders -n 1000000 -c 10 -buyers 1 -stock 1000000 -duration 30s"
+```
+
+На Windows скрипт запускает собранную версию этой утилиты с теми же параметрами. На восьмой секунде начинается остановка catalog, на восемнадцатой — запуск:
+
+```bash
+docker compose -f compose/docker-compose.yml stop -t 0 catalog-svc
 docker compose -f compose/docker-compose.yml start catalog-svc
 ```
 
-SIGKILL catalog выполнен примерно на восьмой секунде, команда запуска — примерно
-на четырнадцатой. Compose также запустил зависимую Kafka, поэтому брокер не был
-остановлен все 30 секунд. Большинство ошибок получено при намеренном отказе
-catalog и восстановлении соединения. Это не контрольный прогон исправного стека.
+Фактические границы нагрузки и остановки:
 
-Окно сбора логов: `2026-10-26T14:00:50.793239Z` —
-`2026-10-26T14:01:23.010085Z`. Оно включает подготовку аккаунтов и завершение
-запросов при остановке генератора. Сохранение тех же логов для анализа:
+```
+load started at 2026-11-05T12:24:21.219069Z
+stop_started=2026-11-05T12:24:29.2209813Z
+catalog_stopped=2026-11-05T12:24:30.0247024Z
+catalog_restarted=2026-11-05T12:24:41.1119229Z
+load finished at 2026-11-05T12:24:51.3444076Z
+
+10287 requests in 30.126s  (341 req/s)
+p50 20.1ms   p95 78.3ms   p99 169.7ms   max 746.1ms
+  201            3603  (35.0%)
+  503            6684  (65.0%)
+```
+
+Логи сохранены через `docker compose logs --no-color --no-log-prefix --since ... --until ...` отдельно для каждого сервиса. Окно сбора 12:24:20.9826423Z–12:24:51.3772193Z включает подготовку и завершение нагрузки; фильтрация ниже оставляет только POST /orders. Других клиентов во время замера не было.
+
+1. Сколько заказов за это время получили `code=Unavailable` от catalog? Для gateway это одна строка с `jq`. Напиши её.
+
+В моей реализации gateway пишет в лог HTTP-статус, но не исходный gRPC-код. Поэтому могу посчитать POST /orders с 503, но в это число попадут и Unavailable, и DeadlineExceeded. Также по этой строке нельзя понять, какой именно сервис был недоступен. Команда для сохранённого лога gateway за нужные 30 секунд:
 
 ```bash
-SINCE=2026-10-26T14:00:50.793239Z
-UNTIL=2026-10-26T14:01:23.010085Z
-docker compose -f compose/docker-compose.yml logs --no-color --no-log-prefix --since "$SINCE" --until "$UNTIL" gateway > gateway.log 2>&1
-docker compose -f compose/docker-compose.yml logs --no-color --no-log-prefix --since "$SINCE" --until "$UNTIL" orders-svc > orders.log 2>&1
-docker compose -f compose/docker-compose.yml logs --no-color --no-log-prefix --since "$SINCE" --until "$UNTIL" catalog-svc > catalog.log 2>&1
+jq -s '[.[] | select(.msg == "HTTP request" and .method == "POST" and .path == "/orders" and .status == 503)] | length' lab/results/4/gateway-30s.log
 ```
 
-Фактический разбор выполнен Python, поскольку jq в окружении не установлен.
-Эквивалентный разбор сохранённых логов без внешних библиотек:
+На Windows jq не установлен, поэтому выполнил эквивалентную фильтрацию полей через PowerShell:
+
+```powershell
+@(Get-Content lab/results/4/gateway-30s.log | ForEach-Object { $_ | ConvertFrom-Json } | Where-Object { $_.msg -eq 'HTTP request' -and $_.method -eq 'POST' -and $_.path -eq '/orders' -and $_.status -eq 503 }).Count
+```
+
+```
+6684
+```
+
+Затем сопоставил request_id этих ответов с логами orders, где одновременно есть завершение Create с Unavailable и ошибка `reserve listing: rpc error: code = Unavailable`. Сводка из скрипта:
+
+```
+http_orders=10287
+http_201=3603
+http_503=6684
+catalog_unavailable_unique=6684
+matched_http503_unavailable=6684
+orders_deadline_exceeded=0
+```
+
+В этом прогоне все 6684 ответа 503 связаны с недоступностью catalog. Из одного gateway-лога установить источник и gRPC-код всё равно нельзя: равенство подтверждено сопоставлением, а не предположением, что любой 503 означает Unavailable от catalog.
+
+2. Тот же вопрос для orders-svc. Что пришлось делать с `grep`/`awk`, и что случится с твоей командой, если коллега поменяет текст сообщения или добавит поле в середину строки?
+
+В orders-svc искал завершение Create с кодом Unavailable и текстом ошибки Reserve, затем считал уникальные request_id. Это позволяет не посчитать один запрос несколько раз из-за дополнительных WARN:
 
 ```bash
-python - <<'PY'
-import collections, json
-def read(name):
-    with open(name, encoding="utf-8") as source:
-        return [json.loads(line) for line in source if line.startswith("{")]
-gateway, orders, catalog = read("gateway.log"), read("orders.log"), read("catalog.log")
-posts = [row for row in gateway if row.get("method") == "POST" and row.get("path") == "/orders"]
-creates = [row for row in orders if row.get("method") == "/marketplace.orders.v1.OrdersService/Create"]
-unavailable = {row["request_id"] for row in creates if row.get("code") == "Unavailable"}
-failures = [row for row in orders if row.get("msg") == "outbox publication failed"]
-print("gateway statuses:", dict(collections.Counter(str(row["status"]) for row in posts)))
-print("orders codes:", dict(collections.Counter(row["code"] for row in creates)))
-print("gateway correlated Unavailable:", sum(row["request_id"] in unavailable for row in posts))
-print("outbox publication failed:", len(failures))
-print("batch size median:", "unknown" if any("batch_size" not in row for row in failures) else "requires calculation")
-PY
+grep -E 'for /marketplace\.orders\.v1\.OrdersService/Create completed with Unavailable.*reserve listing: rpc error: code = Unavailable' lab/results/4/orders-svc-30s.log \
+  | cut -d '"' -f 2 | sort -u | wc -l
 ```
 
-```text
-gateway statuses: {'201': 3282, '503': 21404, '500': 15}
-orders codes: {'OK': 3282, 'Unavailable': 21404, 'Canceled': 15}
-gateway correlated Unavailable: 21404
-outbox publication failed: 9
-batch size median: unknown
+```
+6684
 ```
 
-Пятнадцать Canceled/HTTP 500 зарегистрированы при остановке генератора.
-Автоматический разбор трёх файлов в выполненном прогоне занял 2.969 секунды;
-это время вычисления статистики, не время ручного анализа.
+Команду выполнил через Git Bash. Здесь cut по кавычкам заменяет `awk -F '"' '{print $2}'`: оба варианта извлекают request_id. Пример найденной строки:
 
-### Примеры логов под нагрузкой
+```
+2026/11/05 12:24:29 INFO: gRPC request "dc49acba-53f6-4a00-b37f-3a94e5935ac2" for /marketplace.orders.v1.OrdersService/Create completed with Unavailable in 22 ms; error: "rpc error: code = Unavailable desc = create order: reserve listing: rpc error: code = Unavailable desc = connection error: desc = \"transport: Error while dialing: dial tcp 172.19.0.5:50051: connect: connection refused\""
+```
 
-Gateway:
+Команда зависит от текста сообщения и расположения кавычек. Если коллега поменяет формат, она может перестать находить ошибки или начнёт доставать другое поле. В JSON я обращался бы к полям по имени, поэтому перестановка полей ничего бы не сломала. Код завершения Create сам по себе не доказывает источник ошибки, поэтому в фильтр включён текст reserve listing.
+
+3. Найди в логах orders-svc, сколько раз воркер outbox отправлял батч, пока Kafka была остановлена, и медиану размера батча. Сколько времени ушло?
+
+До замера воркер писал только outbox publication failed, поэтому размер батча восстановить было нельзя. Для измерения добавил текстовый лог каждой завершённой попытки WriteMessages: batch_size, dur_ms, success и error. Это размер фактически переданного в publisher батча; лог успеха публикации ещё не означает COMMIT отметки published_at.
+
+Перед остановкой Kafka дождался пустой outbox. Затем остановил Kafka, создал 300 заказов и собирал логи 30 секунд:
+
+```bash
+docker compose -f compose/docker-compose.yml stop kafka
+make load ARGS="-mode orders -n 300 -c 20 -buyers 1 -stock 1000"
+```
+
+```
+pending=0
+since=2026-11-05T12:27:10.1051600Z
+until=2026-11-05T12:27:40.1767068Z
+seconds=30.0715468
+
+300 requests in 1.791s  (167 req/s)
+p50 83.7ms   p95 543.4ms   p99 617ms   max 646.5ms
+  201             300  (100.0%)
+```
+
+Примеры строк из orders-svc-kafka-down.log:
+
+```
+2026/11/05 12:27:13 INFO: outbox publish attempt batch_size=3 dur_ms=1687 success=false error="context deadline exceeded"
+2026/11/05 12:27:15 INFO: outbox publish attempt batch_size=100 dur_ms=1998 success=false error="context deadline exceeded"
+2026/11/05 12:27:17 INFO: outbox publish attempt batch_size=100 dur_ms=1999 success=false error="context deadline exceeded"
+```
+
+Подсчёт попыток и медианы в PowerShell:
+
+```powershell
+$timer = [Diagnostics.Stopwatch]::StartNew()
+$log = Get-Content lab/results/4/orders-svc-kafka-down.log
+$attempts = @($log | Where-Object { $_ -match 'outbox publish attempt batch_size=' })
+$sizes = @($attempts | ForEach-Object { if ($_ -match 'batch_size=(\d+)') { [int]$Matches[1] } } | Sort-Object)
+$middle = [int][Math]::Floor($sizes.Count / 2)
+$median = if ($sizes.Count % 2) { $sizes[$middle] } else { ($sizes[$middle - 1] + $sizes[$middle]) / 2 }
+$timer.Stop()
+$attempts.Count
+$median
+$timer.Elapsed.TotalMilliseconds
+```
+
+Сводка скрипта, включающая также подсчёт success и WARN:
+
+```
+outbox_attempts=14
+outbox_failed=14
+outbox_success=0
+outbox_warnings=14
+outbox_batch_sizes=3,100,100,100,100,100,100,100,100,100,100,100,100,100
+outbox_batch_median=100
+outbox_search_ms=53.6
+```
+
+За окно завершились 14 попыток публикации, все с ошибкой; успешно отправленных батчей — 0. Медиана размера попытки — 100 событий. Первый батч содержал только 3 события, остальные заказы ещё создавались. Повторные попытки могли содержать те же события, поэтому суммировать размеры батчей как число уникальных заказов нельзя. Поиск и подсчёт по сохранённому логу заняли 53,6 мс; это время выполнения команд, не время написания фильтра.
+
+Перед восстановлением Kafka в outbox оставалось 300 неопубликованных событий. После `docker compose -f compose/docker-compose.yml start kafka catalog-svc` очередь дошла до нуля:
+
+```
+pending=0
+drain_seconds=0.650327
+```
+
+Дренаж измерен от начала опроса после завершения команды start до первого нуля. Это время публикации outbox, а не применения событий в catalog: consumer догоняет Kafka отдельно.
+
+После обработки событий проверил листинг через gateway:
+
+```bash
+curl -s http://localhost:8080/listings/65db6398-89b2-4c87-843b-e0f2c39ae489
+```
 
 ```json
-{"time":"2026-10-26T14:00:52.157997251Z","level":"INFO","msg":"HTTP request","request_id":"a88c1c99-1e88-42cc-a15c-9e3f6c8741f2","method":"POST","path":"/orders","status":201,"dur_ms":32.355818,"remote_addr":"172.19.0.1:38988"}
-{"time":"2026-10-26T14:00:52.158142162Z","level":"INFO","msg":"HTTP request","request_id":"58892daa-71ef-4e0f-89c0-a6784b27d52a","method":"POST","path":"/orders","status":201,"dur_ms":23.416761,"remote_addr":"172.19.0.1:39004"}
-{"time":"2026-10-26T14:00:52.167185577Z","level":"INFO","msg":"HTTP request","request_id":"30cfd918-8b5b-4133-bbe2-fa7f38f1de76","method":"POST","path":"/orders","status":201,"dur_ms":20.177323,"remote_addr":"172.19.0.1:39170"}
+{"id":"65db6398-89b2-4c87-843b-e0f2c39ae489","title":"load-hot","price":10.00,"stock":700,"sold":300,"seller_id":"62977c1d-f9e0-478c-8685-23147c1713c2","created_at":"2026-11-05T12:27:11.486534Z"}
 ```
 
-Orders-svc — успешный RPC, Unavailable и отменённый запрос:
+4. Перепиши (у себя в отчёте, не в коде) три строки логов orders-svc в JSON. Какие поля стали бы обязательными и почему `request_id` среди них?
+
+Три строки из моего лога после перевода в JSON:
 
 ```json
-{"time":"2026-10-26T14:00:52.157234315Z","level":"INFO","msg":"gRPC request completed","request_id":"58892daa-71ef-4e0f-89c0-a6784b27d52a","method":"/marketplace.orders.v1.OrdersService/Create","code":"OK","dur_ms":21}
-{"time":"2026-10-26T14:01:00.656810192Z","level":"INFO","msg":"gRPC request completed","request_id":"ac168f7d-d4a5-4ee4-9fbf-c3f4ff1fc9b4","method":"/marketplace.orders.v1.OrdersService/Create","code":"Unavailable","dur_ms":13,"error":"rpc error: code = Unavailable desc = reserve listing: rpc error: code = Unavailable desc = error reading from server: connection reset by peer"}
-{"time":"2026-10-26T14:01:22.139410311Z","level":"INFO","msg":"gRPC request completed","request_id":"50264e19-4ba5-4d22-b050-89b869558703","method":"/marketplace.orders.v1.OrdersService/Create","code":"Canceled","dur_ms":2,"error":"rpc error: code = Canceled desc = reserve listing: rpc error: code = Canceled desc = context canceled"}
+{"time":"2026-11-04T16:37:20+03:00","level":"WARN","service":"orders-svc","msg":"reservation compensation pending","reservation_id":"8dc33b5f-501e-4280-b46f-3b5e76e2a726","error":"rpc error: code = DeadlineExceeded desc = context deadline exceeded"}
+{"time":"2026-11-04T16:37:20+03:00","level":"WARN","service":"orders-svc","msg":"create order failed","request_id":"a8dd3543-c0ed-4c1a-9ec7-bda4176bca4e","error":"create order: reserve listing: rpc error: code = DeadlineExceeded desc = context deadline exceeded"}
+{"time":"2026-11-04T16:37:20+03:00","level":"INFO","service":"orders-svc","msg":"gRPC request completed","request_id":"a8dd3543-c0ed-4c1a-9ec7-bda4176bca4e","method":"/marketplace.orders.v1.OrdersService/Create","code":"DeadlineExceeded","dur_ms":4019,"error":"rpc error: code = DeadlineExceeded desc = create order: reserve listing: rpc error: code = DeadlineExceeded desc = context deadline exceeded"}
 ```
 
-Catalog-svc:
+Обязательными сделал бы time, level, service и msg. Для обработки запроса ещё request_id, method, code и dur_ms, при ошибке — error. request_id нужен, чтобы собрать путь одного запроса через gateway, orders и catalog. В исходной строке про компенсацию request_id нет, поэтому при переводе в JSON я его не дописывал. Его нужно передавать в лог при выполнении запроса. У фонового воркера общего HTTP-запроса может не быть, поэтому там нужны event_id, order_id или batch_id, по которым можно найти связанные события.
 
-```json
-{"time":"2026-10-26T14:00:52.133969185Z","level":"INFO","msg":"gRPC request completed","request_id":"a88c1c99-1e88-42cc-a15c-9e3f6c8741f2","method":"/marketplace.catalog.v1.CatalogService/Reserve","code":"OK","dur_ms":6}
-{"time":"2026-10-26T14:00:52.141235265Z","level":"INFO","msg":"gRPC request completed","request_id":"58892daa-71ef-4e0f-89c0-a6784b27d52a","method":"/marketplace.catalog.v1.CatalogService/Reserve","code":"OK","dur_ms":5}
-{"time":"2026-10-26T14:00:52.153043421Z","level":"INFO","msg":"gRPC request completed","request_id":"36aeb332-0fac-4e6d-b3d6-25b186a7d69e","method":"/marketplace.catalog.v1.CatalogService/Reserve","code":"OK","dur_ms":11}
-```
+5. Где живут логи на Railway после `stdout` и что с ними через сутки? Что бы ты поставил рядом (Loki, ELK, Vector, что угодно), чтобы вопрос 1 решался одним запросом по всем трём сервисам?
 
-Ошибки воркера outbox:
+Railway собирает stdout и stderr, после чего логи доступны в интерфейсе и через CLI. Через сутки они ещё доступны.
 
-```json
-{"time":"2026-10-26T14:00:54.242570278Z","level":"WARN","msg":"outbox publication failed","error":"publish outbox events: context deadline exceeded"}
-{"time":"2026-10-26T14:00:56.245486239Z","level":"WARN","msg":"outbox publication failed","error":"publish outbox events: context deadline exceeded"}
-{"time":"2026-10-26T14:00:58.247118436Z","level":"WARN","msg":"outbox publication failed","error":"publish outbox events: context deadline exceeded"}
-```
-
-### Ответы
-
-1. **Unavailable получили 21404 запроса создания заказа.** В gateway можно
-   посчитать HTTP 503 одной строкой jq:
-
-   ```bash
-   jq -s '[.[] | select(.method=="POST" and .path=="/orders" and .status==503)] | length' gateway.log
-   ```
-
-   ```text
-   21404
-   ```
-
-   Это эквивалент выполненного Python-разбора; jq-команда не запускалась.
-   В текущем логе gateway нет поля code, а DeadlineExceeded также преобразуется
-   в 503. Поэтому только этот файл не позволяет точно отличить Unavailable.
-   В данном прогоне результат дополнительно подтверждён объединением с
-   orders-svc по request_id, как показано выше.
-2. **Orders-svc уже пишет структурированный RPC-лог.** Эквивалент jq:
-
-   ```bash
-   jq -s '[.[] | select(.method=="/marketplace.orders.v1.OrdersService/Create" and .code=="Unavailable")] | length' orders.log
-   ```
-
-   ```text
-   21404
-   ```
-
-   Grep/awk для позиционного разбора не понадобились. На текстовом логе такая
-   команда зависит от шаблона сообщения и расположения полей; изменение текста
-   или вставка поля могут её сломать. Практическое сравнение JSON и legacy-текста
-   в текущей реализации не воспроизводится — это расхождение с заданием.
-3. **Найдено девять записей об ошибке публикации** между 14:00:54.242Z и
-   14:01:10.260Z в окне отказа и восстановления Kafka. Это число ошибок вызова
-   воркера, а не число сетевых попыток внутреннего Kafka writer. Успешные вызовы,
-   размер батча и точная граница остановленного состояния Kafka в этих строках
-   не записаны. Поэтому точное число отправок только при полностью остановленной
-   Kafka и медиану размера батча вычислить нельзя. Лимит 100 в коде не является
-   измеренным размером каждого батча. На разбор всех трёх логов ушло 2.969 секунды.
-4. **Три приведённые строки orders-svc уже являются JSON.** Перевод из Printf
-   не потребовался. Для единой схемы обязательны time, level, service, стабильный
-   тип события, request_id, method, code/status и dur_ms; при ошибке — тип и текст
-   ошибки. Request_id связывает синхронный запрос между сервисами. Для outbox
-   нужны batch_size, длительность, результат, event_id/order_id. Чтобы продолжить
-   исходную трассу в фоне, request_id нужно переносить в событии: сейчас его
-   в payload нет. Пустое поле request_id само по себе корреляцию не создаст.
-5. **Railway собирает stdout/stderr в журналы платформы.** Через сутки логи
-   доступны в пределах срока хранения тарифа: Free — 3 дня, Trial/Hobby — 7,
-   Pro — 30, Enterprise — до 90. Это справка по
-   [официальной документации Railway](https://docs.railway.com/observability/logs),
-   проверенной 26.10.2026, а не результат облачного эксперимента. Для общего
-   поиска можно собирать JSON через Vector в Loki и фильтровать по service,
-   code и request_id.
-
-Структура даёт надёжный поиск по полям и объединение сервисов без зависимости
-от формулировки сообщения. Однако полезны только записанные поля: без batch_size
-не получить медиану, без gRPC-кода не различить причины 503. Printf подходит для
-небольших утилит и редких диагностических сообщений, которые не служат
-интерфейсом для метрик и межсервисного поиска.
+Я бы собирал логи через Vector и отправлял их в Loki, а смотрел через Grafana. У всех сервисов должны быть одинаковые названия полей service, request_id, method и code, а для исходящих вызовов ещё название вызываемого сервиса. Тогда можно найти все записи одного запроса сразу по трём сервисам и посчитать уникальные запросы с ошибкой. Просто складывать количество ошибок трёх сервисов нельзя, так как одна ошибка может записаться на каждом этапе.
 
 ## 5. Партиции и порядок (для пятёрки)
 
-Топик пересоздан с тремя партициями. Перед удалением остановлены producer и
-consumer, outbox был пуст. Сохранена копия 5202 сообщений с 4104 уникальными
-order_id. После пересоздания история воспроизведена с прежними ключами и payload.
-Повторная обработка не увеличила sold повторно благодаря event_id.
+Пересоздай топик с тремя партициями и повтори 30 заказов одного покупателя на один листинг:
+
+Замер выполнен на локальном compose. Перед ним проверил, что в outbox нет неопубликованных событий. Старый образ catalog-svc не писал успешную обработку событий, поэтому пересобрал его из текущего кода и повторил замер на новом листинге. Ниже результаты повторного замера.
 
 ```bash
 docker run --rm --network compose_default apache/kafka:3.9.2 /opt/kafka/bin/kafka-topics.sh \
   --bootstrap-server kafka:9092 --delete --topic order.created
 docker run --rm --network compose_default apache/kafka:3.9.2 /opt/kafka/bin/kafka-topics.sh \
-  --bootstrap-server kafka:9092 --create --topic order.created --partitions 3
-```
-
-При первой попытке удалить consumer group получен GroupNotEmptyException.
-После остановки consumer и ожидания состояния Empty выполнен сброс offsets:
-
-```bash
-docker run --rm --network compose_default apache/kafka:3.9.2 /opt/kafka/bin/kafka-consumer-groups.sh \
-  --bootstrap-server kafka:9092 --describe --group catalog-svc --state
-docker run --rm --network compose_default apache/kafka:3.9.2 /opt/kafka/bin/kafka-consumer-groups.sh \
-  --bootstrap-server kafka:9092 --reset-offsets --group catalog-svc --topic order.created --to-earliest --execute
-```
-
-После запуска сервисов и успешного пробного заказа выполнена серия:
-
-```bash
-make load ARGS="-mode orders -n 30 -c 20 -stock 1000 -buyers 1"
-docker run --rm --network compose_default apache/kafka:3.9.2 /opt/kafka/bin/kafka-console-consumer.sh \
-  --bootstrap-server kafka:9092 --topic order.created --from-beginning --timeout-ms 10000 \
-  --property print.partition=true --property print.offset=true --property print.key=true > topic.log
-```
-
-Для подсчёта выбраны только сообщения листинга из этой серии:
-
-```bash
-LISTING_ID=4c27d325-0dfb-419d-b854-9a377df0d3b9 python - <<'PY'
-import collections, json, os, re
-events = []
-with open("topic.log", encoding="utf-8") as source:
-    for line in source:
-        match = re.search(r"Partition:(\d+)\s+Offset:(\d+)\s+([^\t]+)\t(\{.*\})", line)
-        if match:
-            event = json.loads(match[4])
-            if event["listing_id"] == os.environ["LISTING_ID"]:
-                events.append((int(match[1]), int(match[2]), match[3], event))
-print("partitions:", dict(sorted(collections.Counter(row[0] for row in events).items())))
-print("unique_order_ids:", len({row[3]["order_id"] for row in events}))
-print("keys_match:", all(row[2] == row[3]["order_id"] for row in events))
-for partition in range(3):
-    print("offsets", partition, sorted(row[1] for row in events if row[0] == partition))
-PY
+  --bootstrap-server kafka:9092 --create --topic order.created --partitions 3 --replication-factor 1
 ```
 
 ```
-До успешного прогона:
-первый запуск: /healthz returned 503
-следующий запуск: 30 ответов 503 при Reserve, stock=1000 sold=0
-
-После успешного пробного заказа:
-listing=4c27d325-0dfb-419d-b854-9a377df0d3b9
-30 requests in 107ms  (281 req/s)
-p50 55.7ms   p95 84.6ms   p99 87.7ms   max 91.8ms
-  201              30  (100.0%)
-
-partition  events  offsets
-0               8  1718..1725
-1               9  1792..1800
-2              13  1693..1705
-
-events=30 unique_order_ids=30
-message key == order_id: true для всех 30 сообщений
-stock=970 sold=30
-consumer lines with partition/offset: 0
+Created topic order.created.
 ```
 
-Учтены только 30 событий этого листинга. История топика сохранена и восстановлена
-после пересоздания, поэтому offset начинаются не с нуля. Порядок записей внутри
-партиций подтверждён экспортом Kafka; фактический порядок успешной обработки
-из логов consumer восстановить нельзя — такие сообщения не логируются.
-
-**Ответ.**
-
-9. **Ключ order_id не гарантирует общий порядок событий покупателя или листинга.**
-   Их разные заказы распределились по трём партициям. Для порядка по листингу
-   ключом нужен listing_id при согласованном partitioner и стабильном числе
-   партиций. Гарантия относится к порядку записи внутри партиции, а не к порядку
-   начала параллельных HTTP-запросов. Горячий листинг сосредоточит нагрузку на
-   одной партиции и ограничит параллелизм обработки. Порядок успешной обработки
-   именно consumer в этом запуске не доказан: соответствующих логов нет.
-
-## Итог проверки
-
-На момент завершения лабораторной, 26.10.2026 в 17:12:54 МСК, все шесть сервисов
-были запущены, `/healthz` возвращал `200 ok`. Топик оставлен с тремя партициями.
-Итоговая сверка выполнена командами:
-
-```bash
-curl -s http://localhost:8080/healthz
-docker compose -f compose/docker-compose.yml exec -T postgres psql -U app -d orders -At -c "select count(*) from orders; select count(*) from outbox; select count(*) from outbox where published_at is null"
-docker compose -f compose/docker-compose.yml exec -T postgres psql -U app -d catalog -At -c "select count(*) from processed_events"
-docker run --rm --network compose_default apache/kafka:3.9.2 /opt/kafka/bin/kafka-consumer-groups.sh \
-  --bootstrap-server kafka:9092 --describe --group catalog-svc
+```
+Partition:1	Offset:0	1ea800ad-8090-4458-a6d1-83295fe50ff6
+Partition:1	Offset:1	7233f6f8-77bf-4c88-81ed-b099e0fcc799
+Partition:1	Offset:2	77bd1b24-49ca-4e7c-a5be-985684644ef8
+Partition:1	Offset:3	77e2706d-7748-4eea-a059-bff148a368b3
+Partition:1	Offset:4	806e30cc-2792-4777-816f-9afa04bd75c8
+Partition:1	Offset:5	5d5e8507-adf1-4556-b36a-cb0b3be5535c
+Partition:1	Offset:6	99b1cbae-c471-4244-b937-9f79de723031
+Partition:1	Offset:7	46b909bb-f11c-4c67-96dc-7825d205e086
+Partition:1	Offset:8	e2b8a187-ddae-4ba9-a107-0b1437a2358b
+Partition:0	Offset:0	fc616706-d0b9-4b2d-99d9-328de9cc784e
+Partition:0	Offset:1	6c97bc55-9125-4f31-9028-d9026bf4d989
+Partition:0	Offset:2	d507c76d-c148-47d7-b23d-ed781bd442b5
+Partition:0	Offset:3	06d0d980-6492-4f81-949e-6322eb408127
+Partition:0	Offset:4	fee89251-3336-49b4-9e78-9e1ab975afc4
+Partition:0	Offset:5	d7b975d3-1a2d-4800-a4f6-9d7a8be78e3e
+Partition:0	Offset:6	2e1be77c-f047-47f0-8a9b-9bd61fc7ab3a
+Partition:0	Offset:7	3bb43fc1-2be9-4768-a0c3-b7e22719af0d
+Partition:0	Offset:8	84334267-bc04-45d7-86d1-55bfc4d400f6
+Partition:0	Offset:9	8c6edd52-527d-481c-9cdd-0f3856d1c286
+Partition:0	Offset:10	8e4b3090-0e80-404e-925a-1e1eeebfe23f
+Partition:2	Offset:0	2aab047a-e99c-4430-9ed3-1e0b54571bdb
+Partition:2	Offset:1	d556f7b4-5013-475c-93a7-618680970329
+Partition:2	Offset:2	773adc4a-2b7e-4e24-b477-5c71e7cf5e39
+Partition:2	Offset:3	f6b9d0eb-4921-4749-bc96-c287a17ddd99
+Partition:2	Offset:4	4ce19949-ccd3-40ab-9718-dcc1a25be3d9
+Partition:2	Offset:5	be3aaf56-f7ff-4e53-bfa0-c848c3ac0735
+Partition:2	Offset:6	94a80fda-7a51-47b8-b04c-9195deba46f9
+Partition:2	Offset:7	61ab0755-bf2a-4011-abdd-f6b2e3ec2d1a
+Partition:2	Offset:8	4cacae96-dd8c-4e0d-906b-bc582fd757bd
+Partition:2	Offset:9	e2558e9a-0bc0-43bf-8404-2411de25b13f
+Processed a total of 30 messages
 ```
 
-```text
-healthz: 200 ok
-orders=4439
-outbox=4439
-outbox published_at IS NULL=0
-processed_events=4439
+События одного покупателя на один листинг попали во все три партиции: в нулевую 11, в первую 9, во вторую 10. Ключ каждой записи совпадает с order_id.
 
-partition  current-offset  log-end-offset  lag
-0                   1824            1824    0
-1                   1898            1898    0
-2                   1812            1812    0
+Три записи из лога в порядке появления:
+
+```json
+{"time":"2026-11-05T11:48:52.132345084Z","level":"INFO","msg":"order.created processed","order_id":"1ea800ad-8090-4458-a6d1-83295fe50ff6","listing_id":"a1bb64c2-e82b-4c93-ad5e-7922b1bcf680","partition":1,"offset":0}
+{"time":"2026-11-05T11:48:52.138018924Z","level":"INFO","msg":"order.created processed","order_id":"2aab047a-e99c-4430-9ed3-1e0b54571bdb","listing_id":"a1bb64c2-e82b-4c93-ad5e-7922b1bcf680","partition":2,"offset":0}
+{"time":"2026-11-05T11:48:52.189945791Z","level":"INFO","msg":"order.created processed","order_id":"7233f6f8-77bf-4c88-81ed-b099e0fcc799","listing_id":"a1bb64c2-e82b-4c93-ad5e-7922b1bcf680","partition":1,"offset":1}
 ```
 
-Это итоговые количества в локальных БД, а не число запросов одной серии.
-Все зафиксированные заказы получили обработанное событие, очередь и lag равны
-нулю. Пять резервов без заказов остались: отсутствие компенсации не устраняется
-доставкой Kafka. После простоя/перезапуска наблюдались таймауты пути
-orders-svc → catalog-svc даже при зелёном `/healthz`; причина ниже уровня RPC
-по этим данным не установлена. Недостающие поля логов и расхождение формата
-orders-svc с заданием перечислены в разделе 4. Облачные проверки не выполнялись.
+Все события применены: stock=0, sold=30. Для увеличения sold на qty перестановка независимых событий не меняет итоговую сумму, поэтому сходимость счётчика сама по себе не означает сохранения общего порядка.
+
+**Вопросы.**
+9. Ключ сообщения — `order_id`. Гарантирован ли порядок событий одного покупателя? Одного листинга? Что нужно взять ключом, чтобы события по листингу шли по порядку, и чем это плохо для «горячего» листинга?
+
+Нет, ни для одного покупателя, ни для одного листинга порядок не гарантирован: у разных заказов разные order_id, и Hash-balancer распределяет их по разным партициям. Kafka сохраняет порядок записей только внутри одной партиции. Одинаковый order_id при неизменном количестве партиций направляет события одного заказа в одну партицию, но не объединяет туда все заказы покупателя или листинга.
+
+Для порядка по листингу ключом нужно взять listing_id и обрабатывать события каждой партиции последовательно. Тогда события листинга будут читаться в порядке записи в Kafka. Чтобы он совпадал с бизнес-порядком изменений, нужно также сохранять этот порядок при публикации: несколько outbox-воркеров с SKIP LOCKED могут отправить более позднее событие раньше раннего. Сам ключ эту проблему не решает.
+
+«Горячий» листинг направит весь свой поток в одну партицию и нагрузит одного consumer в группе. Остальные партиции не смогут разделить этот поток, поэтому будут расти lag и задержка обработки. Добавление consumer не распараллелит обработку такого листинга без отказа от строгого порядка. Если нужен порядок по покупателю, ключом был бы buyer_id, но это уже не гарантировало бы порядок всех событий одного листинга.

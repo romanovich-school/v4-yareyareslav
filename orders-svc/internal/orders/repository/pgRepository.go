@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"marketplace/orders-svc/internal/orders/model"
 	"time"
 
@@ -388,7 +389,11 @@ func (r *PGRepository) SendUnpublishedEvents(
 	sendCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	if err := r.mw.WriteMessages(sendCtx, messages...); err != nil {
+	started := time.Now()
+	err = r.mw.WriteMessages(sendCtx, messages...)
+	log.Printf("INFO: outbox publish attempt batch_size=%d dur_ms=%d success=%t error=%q",
+		len(messages), time.Since(started).Milliseconds(), err == nil, errorMessage(err))
+	if err != nil {
 		return nil, fmt.Errorf("publish outbox events: %w", err)
 	}
 
@@ -415,4 +420,11 @@ func (r *PGRepository) SendUnpublishedEvents(
 
 	return events, nil
 
+}
+
+func errorMessage(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
 }
