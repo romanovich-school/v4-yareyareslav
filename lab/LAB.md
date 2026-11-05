@@ -237,16 +237,70 @@ Railway собирает stdout и stderr, после чего логи дост
 
 Пересоздай топик с тремя партициями и повтори 30 заказов одного покупателя на один листинг:
 
+Замер выполнен на локальном compose. Перед ним проверил, что в outbox нет неопубликованных событий. Старый образ catalog-svc не писал успешную обработку событий, поэтому пересобрал его из текущего кода и повторил замер на новом листинге. Ниже результаты повторного замера.
+
 ```bash
 docker run --rm --network compose_default apache/kafka:3.9.2 /opt/kafka/bin/kafka-topics.sh \
   --bootstrap-server kafka:9092 --delete --topic order.created
 docker run --rm --network compose_default apache/kafka:3.9.2 /opt/kafka/bin/kafka-topics.sh \
-  --bootstrap-server kafka:9092 --create --topic order.created --partitions 3
+  --bootstrap-server kafka:9092 --create --topic order.created --partitions 3 --replication-factor 1
 ```
 
 ```
-(вывод: в каких партициях оказались события; из consumer-логов — порядок обработки)
+Created topic order.created.
 ```
+
+```
+Partition:1	Offset:0	1ea800ad-8090-4458-a6d1-83295fe50ff6
+Partition:1	Offset:1	7233f6f8-77bf-4c88-81ed-b099e0fcc799
+Partition:1	Offset:2	77bd1b24-49ca-4e7c-a5be-985684644ef8
+Partition:1	Offset:3	77e2706d-7748-4eea-a059-bff148a368b3
+Partition:1	Offset:4	806e30cc-2792-4777-816f-9afa04bd75c8
+Partition:1	Offset:5	5d5e8507-adf1-4556-b36a-cb0b3be5535c
+Partition:1	Offset:6	99b1cbae-c471-4244-b937-9f79de723031
+Partition:1	Offset:7	46b909bb-f11c-4c67-96dc-7825d205e086
+Partition:1	Offset:8	e2b8a187-ddae-4ba9-a107-0b1437a2358b
+Partition:0	Offset:0	fc616706-d0b9-4b2d-99d9-328de9cc784e
+Partition:0	Offset:1	6c97bc55-9125-4f31-9028-d9026bf4d989
+Partition:0	Offset:2	d507c76d-c148-47d7-b23d-ed781bd442b5
+Partition:0	Offset:3	06d0d980-6492-4f81-949e-6322eb408127
+Partition:0	Offset:4	fee89251-3336-49b4-9e78-9e1ab975afc4
+Partition:0	Offset:5	d7b975d3-1a2d-4800-a4f6-9d7a8be78e3e
+Partition:0	Offset:6	2e1be77c-f047-47f0-8a9b-9bd61fc7ab3a
+Partition:0	Offset:7	3bb43fc1-2be9-4768-a0c3-b7e22719af0d
+Partition:0	Offset:8	84334267-bc04-45d7-86d1-55bfc4d400f6
+Partition:0	Offset:9	8c6edd52-527d-481c-9cdd-0f3856d1c286
+Partition:0	Offset:10	8e4b3090-0e80-404e-925a-1e1eeebfe23f
+Partition:2	Offset:0	2aab047a-e99c-4430-9ed3-1e0b54571bdb
+Partition:2	Offset:1	d556f7b4-5013-475c-93a7-618680970329
+Partition:2	Offset:2	773adc4a-2b7e-4e24-b477-5c71e7cf5e39
+Partition:2	Offset:3	f6b9d0eb-4921-4749-bc96-c287a17ddd99
+Partition:2	Offset:4	4ce19949-ccd3-40ab-9718-dcc1a25be3d9
+Partition:2	Offset:5	be3aaf56-f7ff-4e53-bfa0-c848c3ac0735
+Partition:2	Offset:6	94a80fda-7a51-47b8-b04c-9195deba46f9
+Partition:2	Offset:7	61ab0755-bf2a-4011-abdd-f6b2e3ec2d1a
+Partition:2	Offset:8	4cacae96-dd8c-4e0d-906b-bc582fd757bd
+Partition:2	Offset:9	e2558e9a-0bc0-43bf-8404-2411de25b13f
+Processed a total of 30 messages
+```
+
+События одного покупателя на один листинг попали во все три партиции: в нулевую 11, в первую 9, во вторую 10. Ключ каждой записи совпадает с order_id.
+
+Три записи из лога в порядке появления:
+
+```json
+{"time":"2026-11-05T11:48:52.132345084Z","level":"INFO","msg":"order.created processed","order_id":"1ea800ad-8090-4458-a6d1-83295fe50ff6","listing_id":"a1bb64c2-e82b-4c93-ad5e-7922b1bcf680","partition":1,"offset":0}
+{"time":"2026-11-05T11:48:52.138018924Z","level":"INFO","msg":"order.created processed","order_id":"2aab047a-e99c-4430-9ed3-1e0b54571bdb","listing_id":"a1bb64c2-e82b-4c93-ad5e-7922b1bcf680","partition":2,"offset":0}
+{"time":"2026-11-05T11:48:52.189945791Z","level":"INFO","msg":"order.created processed","order_id":"7233f6f8-77bf-4c88-81ed-b099e0fcc799","listing_id":"a1bb64c2-e82b-4c93-ad5e-7922b1bcf680","partition":1,"offset":1}
+```
+
+Все события применены: stock=0, sold=30. Для увеличения sold на qty перестановка независимых событий не меняет итоговую сумму, поэтому сходимость счётчика сама по себе не означает сохранения общего порядка.
 
 **Вопросы.**
 9. Ключ сообщения — `order_id`. Гарантирован ли порядок событий одного покупателя? Одного листинга? Что нужно взять ключом, чтобы события по листингу шли по порядку, и чем это плохо для «горячего» листинга?
+
+Нет, ни для одного покупателя, ни для одного листинга порядок не гарантирован: у разных заказов разные order_id, и Hash-balancer распределяет их по разным партициям. Kafka сохраняет порядок записей только внутри одной партиции. Одинаковый order_id при неизменном количестве партиций направляет события одного заказа в одну партицию, но не объединяет туда все заказы покупателя или листинга.
+
+Для порядка по листингу ключом нужно взять listing_id и обрабатывать события каждой партиции последовательно. Тогда события листинга будут читаться в порядке записи в Kafka. Чтобы он совпадал с бизнес-порядком изменений, нужно также сохранять этот порядок при публикации: несколько outbox-воркеров с SKIP LOCKED могут отправить более позднее событие раньше раннего. Сам ключ эту проблему не решает.
+
+«Горячий» листинг направит весь свой поток в одну партицию и нагрузит одного consumer в группе. Остальные партиции не смогут разделить этот поток, поэтому будут расти lag и задержка обработки. Добавление consumer не распараллелит обработку такого листинга без отказа от строгого порядка. Если нужен порядок по покупателю, ключом был бы buyer_id, но это уже не гарантировало бы порядок всех событий одного листинга.
