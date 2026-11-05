@@ -73,6 +73,12 @@ func (c *KafkaConsumer) apply(ctx context.Context, message kafka.Message) bool {
 			reason = permanentErrorReason(err)
 		}
 		if err == nil {
+			slog.InfoContext(ctx, "order.created processed",
+				"order_id", event.OrderID,
+				"listing_id", event.ListingID,
+				"partition", message.Partition,
+				"offset", message.Offset,
+			)
 			return true
 		}
 		if reason != "" {

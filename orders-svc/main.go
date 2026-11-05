@@ -29,7 +29,6 @@ import (
 	"github.com/segmentio/kafka-go"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 )
 
@@ -94,6 +93,7 @@ func run(ctx context.Context, errChan chan error) (runErr error) {
 		return fmt.Errorf("create catalog client: %w", err)
 	}
 	defer conn.Close()
+	conn.Connect()
 
 	kafkaWorkerCtx, cancelWorker := context.WithCancel(context.Background())
 	workerDone := make(chan struct{})
@@ -133,14 +133,8 @@ func run(ctx context.Context, errChan chan error) (runErr error) {
 	orderspb.RegisterOrdersServiceServer(server, ordersServer)
 	log.Printf("gRPC server listening on %s", cfg.GRPC.Addr)
 
-	healthServer := health.NewServer()
+	healthServer := newOrdersHealthServer(healthpb.NewHealthClient(conn))
 	healthpb.RegisterHealthServer(server, healthServer)
-
-	healthServer.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)
-	healthServer.SetServingStatus(
-		orderspb.OrdersService_ServiceDesc.ServiceName,
-		healthpb.HealthCheckResponse_SERVING,
-	)
 
 	go func() {
 		errChan <- server.Serve(listener)
@@ -151,6 +145,7 @@ func run(ctx context.Context, errChan chan error) (runErr error) {
 	case <-ctx.Done():
 		log.Println("shutdown started")
 	case err := <-errChan:
+		healthServer.Shutdown()
 		server.Stop()
 		if err == nil {
 			return errors.New("gRPC server stopped unexpectedly")
